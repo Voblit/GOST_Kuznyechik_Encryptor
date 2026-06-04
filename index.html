@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Packet Tool</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --bg-light: #1e1e1e;
+            --text: #e0e0e0;
+            --text-muted: #a0a0a0;
+            --primary: #333333;
+            --primary-hover: #444444;
+            --success: #4caf50;
+            --error: #f44336;
+            --border: #2a2a2a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.4;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--text);
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-size: 1rem;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+
+        .tab-button:hover {
+            color: var(--text);
+        }
+
+        .tab-button.active {
+            color: var(--text);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        input[type="text"],
+        input[type="password"],
+        textarea {
+            width: 100%;
+            padding: 8px;
+            background-color: var(--bg-light);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            padding: 8px 15px;
+            background-color: var(--primary);
+            color: var(--text);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .output-box {
+            background-color: var(--bg-light);
+            border: 1px solid var(--border);
+            padding: 8px;
+            margin-top: 5px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            position: relative;
+            min-height: 35px;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.75rem;
+            padding: 2px 5px;
+            transition: color 0.2s;
+        }
+
+        .copy-btn:hover {
+            color: var(--text);
+        }
+
+        .status {
+            margin-top: 10px;
+            padding: 8px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .status.success {
+            color: var(--success);
+            display: block;
+            background-color: rgba(76, 175, 80, 0.1);
+            border: 1px solid var(--success);
+        }
+
+        .status.error {
+            color: var(--error);
+            display: block;
+            background-color: rgba(244, 67, 54, 0.1);
+            border: 1px solid var(--error);
+        }
+    </style>
+
+    <script src="libs/crypto-js.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Secure Packet Tool</h1>
+
+        <div class="tabs">
+            <button class="tab-button active" onclick="switchTab('encrypt', event)">Encrypt</button>
+            <button class="tab-button" onclick="switchTab('decrypt', event)">Decrypt</button>
+        </div>
+
+        <div id="encrypt" class="tab-content active">
+            <div class="form-group">
+                <label for="encrypt-passphrase">Passphrase</label>
+                <input type="password" id="encrypt-passphrase" placeholder="Enter passphrase">
+            </div>
+
+            <div class="button-group">
+                <button onclick="deriveKey('encrypt')">Derive Key</button>
+                <button onclick="generateIV('encrypt')">Generate IV</button>
+            </div>
+
+            <div class="form-group">
+                <label>Derived Key (32 bytes)</label>
+                <div class="output-box">
+                    <div id="encrypt-key"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('encrypt-key')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>IV (16 bytes)</label>
+                <div class="output-box">
+                    <div id="encrypt-iv"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('encrypt-iv')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="encrypt-plaintext">Plaintext</label>
+                <textarea id="encrypt-plaintext" placeholder="Enter text to encrypt"></textarea>
+            </div>
+
+            <div class="button-group">
+                <button onclick="encrypt()">Encrypt</button>
+            </div>
+
+            <div class="form-group">
+                <label>Ciphertext (Hex)</label>
+                <div class="output-box">
+                    <div id="encrypt-ciphertext"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('encrypt-ciphertext')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Integrity Hash (SHA-256)</label>
+                <div class="output-box">
+                    <div id="encrypt-hash"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('encrypt-hash')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Full Packet (Hex)</label>
+                <div class="output-box">
+                    <div id="encrypt-full-packet-hex"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('encrypt-full-packet-hex')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Full Packet (Base64)</label>
+                <div class="output-box">
+                    <div id="encrypt-full-packet-base64"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('encrypt-full-packet-base64')">Copy</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="decrypt" class="tab-content">
+            <div class="form-group">
+                <label for="decrypt-passphrase">Passphrase</label>
+                <input type="password" id="decrypt-passphrase" placeholder="Enter passphrase">
+            </div>
+
+            <div class="button-group">
+                <button onclick="deriveKey('decrypt')">Derive Key</button>
+            </div>
+
+            <div class="form-group">
+                <label>Derived Key (32 bytes)</label>
+                <div class="output-box">
+                    <div id="decrypt-key"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('decrypt-key')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="decrypt-packet">Received Packet (Hex or Base64)</label>
+                <textarea id="decrypt-packet" placeholder="Paste the full packet here"></textarea>
+            </div>
+
+            <div class="button-group">
+                <button onclick="decrypt()">Decrypt & Verify</button>
+            </div>
+
+            <div class="form-group">
+                <label>Extracted IV</label>
+                <div class="output-box">
+                    <div id="decrypt-iv"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('decrypt-iv')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Extracted Ciphertext</label>
+                <div class="output-box">
+                    <div id="decrypt-ciphertext"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('decrypt-ciphertext')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Extracted Hash</label>
+                <div class="output-box">
+                    <div id="decrypt-hash"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('decrypt-hash')">Copy</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Decrypted Plaintext</label>
+                <div class="output-box">
+                    <div id="decrypt-plaintext"></div>
+                    <button class="copy-btn" onclick="copyToClipboard('decrypt-plaintext')">Copy</button>
+                </div>
+            </div>
+
+            <div id="decrypt-status" class="status"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- UTILITY INTERFACES ---
+        function copyToClipboard(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            if (text) navigator.clipboard.writeText(text);
+        }
+
+        function switchTab(tabName, event) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // --- ENCRYPTION PIPELINES ---
+        function deriveKey(tab) {
+            const passphrase = document.getElementById(tab + '-passphrase').value;
+            if (!passphrase) {
+                alert("Please enter a passphrase.");
+                return;
+            }
+            
+            // Hash passphrase to generate a standard 32-byte key
+            const keyHash = CryptoJS.SHA256(passphrase);
+            const keyHex = keyHash.toString(CryptoJS.enc.Hex);
+            
+            document.getElementById(tab + '-key').textContent = keyHex;
+            return keyHex;
+        }
+
+        function generateIV(tab) {
+            const iv = CryptoJS.lib.WordArray.random(16);
+            const ivHex = iv.toString(CryptoJS.enc.Hex);
+            document.getElementById(tab + '-iv').textContent = ivHex;
+            return ivHex;
+        }
+
+        function encrypt() {
+            const plaintext = document.getElementById('encrypt-plaintext').value;
+            const keyHex = document.getElementById('encrypt-key').textContent;
+            let ivHex = document.getElementById('encrypt-iv').textContent;
+
+            if (!plaintext) return alert("Please enter plaintext.");
+            if (!keyHex) return alert("Please derive a key first.");
+            if (!ivHex) ivHex = generateIV('encrypt');
+
+            const key = CryptoJS.enc.Hex.parse(keyHex);
+            const iv = CryptoJS.enc.Hex.parse(ivHex);
+
+            // High-grade block cipher processing matching standard padding formats
+            const encrypted = CryptoJS.AES.encrypt(plaintext, key, {
+                iv: iv,
+                mode: CryptoJS.mode.CBC,
+                padding: CryptoJS.pad.Pkcs7
+            });
+
+            const ciphertextHex = encrypted.ciphertext.toString(CryptoJS.enc.Hex);
+
+            // Compute payload integrity check
+            const payloadHex = ivHex + ciphertextHex;
+            const hashHex = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(payloadHex)).toString(CryptoJS.enc.Hex);
+
+            document.getElementById('encrypt-ciphertext').textContent = ciphertextHex;
+            document.getElementById('encrypt-hash').textContent = hashHex;
+
+            const fullPacketHex = ivHex + ciphertextHex + hashHex;
+            document.getElementById('encrypt-full-packet-hex').textContent = fullPacketHex;
+
+            // Convert complete Hex packet to base64 safely
+            const rawPacketBytes = CryptoJS.enc.Hex.parse(fullPacketHex);
+            document.getElementById('encrypt-full-packet-base64').textContent = CryptoJS.enc.Base64.stringify(rawPacketBytes);
+        }
+
+        function decrypt() {
+            const packet = document.getElementById('decrypt-packet').value.trim();
+            const keyHex = document.getElementById('decrypt-key').textContent;
+            const statusBox = document.getElementById('decrypt-status');
+
+            if (!packet) return alert("Please enter a packet.");
+            if (!keyHex) return alert("Please derive a key first.");
+
+            let packetHex = "";
+            try {
+                if (/^[0-9a-fA-F]+$/.test(packet)) {
+                    packetHex = packet;
+                } else {
+                    // Try parsing as base64 string safely
+                    const base64Parsed = CryptoJS.enc.Base64.parse(packet);
+                    packetHex = base64Parsed.toString(CryptoJS.enc.Hex);
+                }
+            } catch (e) {
+                statusBox.innerHTML = '❌ Invalid packet data layout structure.';
+                statusBox.className = 'status error';
+                return;
+            }
+
+            // Minimum required length validation: IV(32 chars) + payload blocks + Hash(64 chars)
+            if (packetHex.length < 128 || !packetHex) {
+                statusBox.innerHTML = '❌ Invalid or incomplete packet structural size.';
+                statusBox.className = 'status error';
+                return;
+            }
+
+            const ivHex = packetHex.substring(0, 32);
+            const hashStart = packetHex.length - 64;
+            const ciphertextHex = packetHex.substring(32, hashStart);
+            const receivedHashHex = packetHex.substring(hashStart);
+
+            document.getElementById('decrypt-iv').textContent = ivHex;
+            document.getElementById('decrypt-ciphertext').textContent = ciphertextHex;
+            document.getElementById('decrypt-hash').textContent = receivedHashHex;
+
+            // Recalculate and match authentication integrity tag
+            const payloadHex = ivHex + ciphertextHex;
+            const computedHashHex = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(payloadHex)).toString(CryptoJS.enc.Hex);
+
+            if (computedHashHex !== receivedHashHex) {
+                statusBox.innerHTML = '❌ Integrity check failed! Packet corrupted or tampered.';
+                statusBox.className = 'status error';
+                document.getElementById('decrypt-plaintext').textContent = "";
+                return;
+            }
+
+            statusBox.innerHTML = '✅ Integrity verified. Decoding packet...';
+            statusBox.className = 'status success';
+
+            try {
+                const key = CryptoJS.enc.Hex.parse(keyHex);
+                const iv = CryptoJS.enc.Hex.parse(ivHex);
+                
+                const decrypted = CryptoJS.AES.decrypt(
+                    { ciphertext: CryptoJS.enc.Hex.parse(ciphertextHex) },
+                    key,
+                    { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }
+                );
+
+                const plaintext = decrypted.toString(CryptoJS.enc.Utf8);
+                if (!plaintext) throw new Error("Data corruption");
+                
+                document.getElementById('decrypt-plaintext').textContent = plaintext;
+            } catch (e) {
+                document.getElementById('decrypt-plaintext').textContent = "Decryption failed. Check passphrase context.";
+            }
+        }
+    </script>
+</body>
+</html>

@@ -15,6 +15,8 @@
             --success: #4caf50;
             --error: #f44336;
             --border: #2a2a2a;
+            --warn-bg: rgba(255, 193, 7, 0.1);
+            --warn-border: #ffc107;
         }
 
         * {
@@ -34,6 +36,16 @@
             max-width: 800px;
             margin: 20px auto;
             padding: 20px;
+        }
+
+        .disclaimer {
+            background-color: var(--warn-bg);
+            border: 1px dashed var(--warn-border);
+            padding: 12px;
+            margin-bottom: 25px;
+            font-size: 0.85rem;
+            color: #ffe082;
+            text-align: center;
         }
 
         h1 {
@@ -184,6 +196,11 @@
 </head>
 <body>
     <div class="container">
+        <div class="disclaimer">
+Just a simple tool I decided to make after learning about GOST, capable of decently secure encryption.
+</strong>Note:<strong> This is a client-side proof-of-concept tool built purely for educational purposes and playing around with packet structures. It runs entirely offline. Check the LICENSE file for the standard MIT "AS IS" liability release.
+        </div>
+
         <h1>Secure Packet Tool</h1>
 
         <div class="tabs">
@@ -345,7 +362,6 @@
                 return;
             }
             
-            // Hash passphrase to generate a standard 32-byte key
             const keyHash = CryptoJS.SHA256(passphrase);
             const keyHex = keyHash.toString(CryptoJS.enc.Hex);
             
@@ -372,7 +388,6 @@
             const key = CryptoJS.enc.Hex.parse(keyHex);
             const iv = CryptoJS.enc.Hex.parse(ivHex);
 
-            // High-grade block cipher processing matching standard padding formats
             const encrypted = CryptoJS.AES.encrypt(plaintext, key, {
                 iv: iv,
                 mode: CryptoJS.mode.CBC,
@@ -381,7 +396,6 @@
 
             const ciphertextHex = encrypted.ciphertext.toString(CryptoJS.enc.Hex);
 
-            // Compute payload integrity check
             const payloadHex = ivHex + ciphertextHex;
             const hashHex = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(payloadHex)).toString(CryptoJS.enc.Hex);
 
@@ -391,7 +405,6 @@
             const fullPacketHex = ivHex + ciphertextHex + hashHex;
             document.getElementById('encrypt-full-packet-hex').textContent = fullPacketHex;
 
-            // Convert complete Hex packet to base64 safely
             const rawPacketBytes = CryptoJS.enc.Hex.parse(fullPacketHex);
             document.getElementById('encrypt-full-packet-base64').textContent = CryptoJS.enc.Base64.stringify(rawPacketBytes);
         }
@@ -409,7 +422,6 @@
                 if (/^[0-9a-fA-F]+$/.test(packet)) {
                     packetHex = packet;
                 } else {
-                    // Try parsing as base64 string safely
                     const base64Parsed = CryptoJS.enc.Base64.parse(packet);
                     packetHex = base64Parsed.toString(CryptoJS.enc.Hex);
                 }
@@ -419,7 +431,6 @@
                 return;
             }
 
-            // Minimum required length validation: IV(32 chars) + payload blocks + Hash(64 chars)
             if (packetHex.length < 128 || !packetHex) {
                 statusBox.innerHTML = '❌ Invalid or incomplete packet structural size.';
                 statusBox.className = 'status error';
@@ -435,7 +446,6 @@
             document.getElementById('decrypt-ciphertext').textContent = ciphertextHex;
             document.getElementById('decrypt-hash').textContent = receivedHashHex;
 
-            // Recalculate and match authentication integrity tag
             const payloadHex = ivHex + ciphertextHex;
             const computedHashHex = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(payloadHex)).toString(CryptoJS.enc.Hex);
 

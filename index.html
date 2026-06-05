@@ -18,26 +18,22 @@
             --warn-bg: rgba(255, 193, 7, 0.1);
             --warn-border: #ffc107;
         }
-
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             font-family: 'Consolas', 'Courier New', monospace;
         }
-
         body {
             background-color: var(--bg);
             color: var(--text);
             line-height: 1.4;
         }
-
         .container {
             max-width: 800px;
             margin: 20px auto;
             padding: 20px;
         }
-
         .disclaimer {
             background-color: var(--warn-bg);
             border: 1px dashed var(--warn-border);
@@ -47,7 +43,6 @@
             color: #ffe082;
             text-align: center;
         }
-
         h1 {
             text-align: center;
             color: var(--text);
@@ -55,13 +50,11 @@
             font-size: 1.5rem;
             font-weight: 600;
         }
-
         .tabs {
             display: flex;
             margin-bottom: 20px;
             border-bottom: 1px solid var(--border);
         }
-
         .tab-button {
             flex: 1;
             padding: 10px;
@@ -74,35 +67,28 @@
             color: var(--text-muted);
             transition: all 0.2s;
         }
-
         .tab-button:hover {
             color: var(--text);
         }
-
         .tab-button.active {
             color: var(--text);
             border-bottom-color: var(--primary);
         }
-
         .tab-content {
             display: none;
         }
-
         .tab-content.active {
             display: block;
         }
-
         .form-group {
             margin-bottom: 15px;
         }
-
         label {
             display: block;
             margin-bottom: 5px;
             font-size: 0.9rem;
             color: var(--text-muted);
         }
-
         input[type="text"],
         input[type="password"],
         textarea {
@@ -114,19 +100,16 @@
             font-family: 'Consolas', 'Courier New', monospace;
             font-size: 0.9rem;
         }
-
         textarea {
             resize: vertical;
             min-height: 120px;
         }
-
         .button-group {
             display: flex;
             gap: 10px;
             margin-bottom: 15px;
             align-items: center;
         }
-
         button {
             padding: 8px 15px;
             background-color: var(--primary);
@@ -136,16 +119,13 @@
             font-size: 0.9rem;
             transition: background-color 0.2s;
         }
-
         button:hover {
             background-color: var(--primary-hover);
         }
-
         button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
-
         .output-box {
             background-color: var(--bg-light);
             border: 1px solid var(--border);
@@ -158,7 +138,6 @@
             position: relative;
             min-height: 35px;
         }
-
         .copy-btn {
             position: absolute;
             top: 5px;
@@ -171,30 +150,25 @@
             padding: 2px 5px;
             transition: color 0.2s;
         }
-
         .copy-btn:hover {
             color: var(--text);
         }
-
         .status {
             margin-top: 10px;
             padding: 8px;
             font-size: 0.9rem;
             display: block;
         }
-
         .status.success {
             color: var(--success);
             background-color: rgba(76, 175, 80, 0.1);
             border: 1px solid var(--success);
         }
-
         .status.error {
             color: var(--error);
             background-color: rgba(244, 67, 54, 0.1);
             border: 1px solid var(--error);
         }
-
         #global-loader {
             padding: 8px 12px;
             background-color: var(--bg-light);
@@ -205,44 +179,36 @@
             text-align: center;
         }
     </style>
-
     <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
 </head>
 <body>
     <div class="container">
         <h1>GOST Suite</h1>
-
         <div class="disclaimer">
-Just a simple tool I decided to make after learning about GOST, capable of decently secure encryption.
-<strong>Note:</strong> This is a client-side proof-of-concept tool built purely for educational purposes and playing around with packet structures. It runs entirely offline. Check the LICENSE file for the standard MIT "AS IS" liability release.
+            Just a simple tool I decided to make after learning about GOST, capable of decently secure encryption.
+            <strong>Note:</strong> This is a client-side proof-of-concept tool built purely for educational purposes and playing around with packet structures. It runs entirely offline. Check the LICENSE file for the standard MIT "AS IS" liability release.
         </div>
-
         <div id="global-loader">🔄 Initializing WebAssembly Python Engine & Downloading gostcrypto (takes up to 15s)...</div>
-
         <div class="tabs">
             <button class="tab-button active" onclick="switchTab('encrypt', event)">Encrypt</button>
             <button class="tab-button" onclick="switchTab('decrypt', event)">Decrypt</button>
         </div>
-
         <div id="encrypt" class="tab-content active">
             <div class="form-group">
                 <label for="encrypt-passphrase">Passphrase</label>
                 <input type="password" id="encrypt-passphrase" placeholder="Enter passphrase">
             </div>
-
             <div class="button-group">
                 <button class="action-btn" onclick="deriveKey('encrypt')" disabled>Derive Key</button>
                 <button class="action-btn" onclick="generateIV('encrypt')" disabled>Generate IV</button>
             </div>
-
             <div class="form-group">
-                <label>Derived Key (Streebog-256)</label>
+                <label>Derived Key (PBKDF2-Streebog-256)</label>
                 <div class="output-box">
                     <div id="encrypt-key"></div>
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-key')">Copy</button>
                 </div>
             </div>
-
             <div class="form-group">
                 <label>IV (16 bytes)</label>
                 <div class="output-box">
@@ -250,16 +216,13 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-iv')">Copy</button>
                 </div>
             </div>
-
             <div class="form-group">
                 <label for="encrypt-plaintext">Plaintext</label>
                 <textarea id="encrypt-plaintext" placeholder="Enter text to encrypt"></textarea>
             </div>
-
             <div class="button-group">
                 <button class="action-btn" onclick="encrypt()" disabled>Encrypt</button>
             </div>
-
             <div class="form-group">
                 <label>Ciphertext (Kuznyechik CBC Hex Chunks)</label>
                 <div class="output-box">
@@ -267,7 +230,6 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-ciphertext')">Copy</button>
                 </div>
             </div>
-
             <div class="form-group">
                 <label>Integrity Hash (Streebog-256 Checksum)</label>
                 <div class="output-box">
@@ -275,7 +237,6 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-hash')">Copy</button>
                 </div>
             </div>
-
             <div class="form-group">
                 <label>Full Packet (128-bit Chunk Line-Separated Layout)</label>
                 <div class="output-box">
@@ -283,43 +244,35 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-full-packet-hex')">Copy</button>
                 </div>
             </div>
-
             <div class="form-group">
                 <label>Full Packet (Base64 Representation)</label>
                 <div class="output-box">
                     <div id="encrypt-full-packet-base64"></div>
-                    <button class="copy-btn" onclick="copyToClipboard('encrypt-full-packet-base64')">Copy</button>
-                </div>
+                    <button class="copy-btn" onclick="copyToClipboard('encrypt-full-packet-base64')">Copy</button>                </div>
             </div>
         </div>
-
         <div id="decrypt" class="tab-content">
             <div class="form-group">
                 <label for="decrypt-passphrase">Passphrase</label>
                 <input type="password" id="decrypt-passphrase" placeholder="Enter passphrase">
             </div>
-
             <div class="button-group">
                 <button class="action-btn" onclick="deriveKey('decrypt')" disabled>Derive Key</button>
             </div>
-
             <div class="form-group">
-                <label>Derived Key (Streebog-256)</label>
+                <label>Derived Key (PBKDF2-Streebog-256)</label>
                 <div class="output-box">
                     <div id="decrypt-key"></div>
                     <button class="copy-btn" onclick="copyToClipboard('decrypt-key')">Copy</button>
                 </div>
             </div>
-
             <div class="form-group">
                 <label for="decrypt-packet">Received Packet Payload (Paste Full Multi-Line Layout or Base64)</label>
                 <textarea id="decrypt-packet" placeholder="Paste the line-split block chunks here"></textarea>
             </div>
-
             <div class="button-group">
                 <button class="action-btn" onclick="decrypt()" disabled>Decrypt & Verify</button>
             </div>
-
             <div class="form-group">
                 <label>Extracted IV</label>
                 <div class="output-box">
@@ -327,7 +280,6 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                     <button class="copy-btn" onclick="copyToClipboard('decrypt-iv')">Copy</button>
                 </div>
             </div>
-
             <div class="form-group">
                 <label>Extracted Ciphertext Chunks</label>
                 <div class="output-box">
@@ -335,7 +287,6 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                     <button class="copy-btn" onclick="copyToClipboard('decrypt-ciphertext')">Copy</button>
                 </div>
             </div>
-
             <div class="form-group">
                 <label>Extracted Hash</label>
                 <div class="output-box">
@@ -343,7 +294,6 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                     <button class="copy-btn" onclick="copyToClipboard('decrypt-hash')">Copy</button>
                 </div>
             </div>
-
             <div class="form-group">
                 <label>Decrypted Plaintext</label>
                 <div class="output-box">
@@ -351,133 +301,37 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                     <button class="copy-btn" onclick="copyToClipboard('decrypt-plaintext')">Copy</button>
                 </div>
             </div>
-
             <div id="decrypt-status" class="status" style="display: none;"></div>
         </div>
     </div>
-
     <script>
         let pyodideInstance = null;
-
         function copyToClipboard(elementId) {
             const text = document.getElementById(elementId).textContent;
-            if (text) navigator.clipboard.writeText(text);
+            if (text) {
+                navigator.clipboard.writeText(text);
+                const btn = event.target;
+                const oldText = btn.textContent;
+                btn.textContent = "Copied!";
+                setTimeout(() => { btn.textContent = oldText; }, 1000);
+            }
         }
-
         function switchTab(tabName, event) {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
             document.getElementById(tabName).classList.add('active');
             event.target.classList.add('active');
         }
-
         async function initPythonEnv() {
             const loader = document.getElementById('global-loader');
             try {
                 pyodideInstance = await loadPyodide({
                     indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.1/full/"
                 });
-                
                 await pyodideInstance.loadPackage("micropip");
                 const micropip = pyodideInstance.pyimport("micropip");
                 await micropip.install("gostcrypto");
-
-                await pyodideInstance.runPythonAsync(`
-import os
-import base64
-from gostcrypto import gosthash, gostcipher
-
-def pad(data: bytes, block_size: int = 16) -> bytes:
-    padding_len = block_size - (len(data) % block_size)
-    return data + bytes([padding_len] * padding_len)
-
-def unpad(data: bytes) -> bytes:
-    padding_len = data[-1]
-    return data[:-padding_len]
-
-def core_derive_key(passphrase: str) -> str:
-    passkey_bytes = passphrase.encode('utf-8')
-    hasher = gosthash.new('streebog256', data=passkey_bytes)
-    return hasher.digest().hex()
-
-def core_generate_iv() -> str:
-    return os.urandom(16).hex()
-
-def core_encrypt(plaintext: str, key_hex: str, iv_hex: str) -> dict:
-    key_bytes = bytes.fromhex(key_hex)
-    iv_bytes = bytes.fromhex(iv_hex)
-    
-    plaintext_bytes = pad(plaintext.encode('utf-8'), block_size=16)
-    cipher = gostcipher.new('kuznechik', key_bytes, gostcipher.MODE_CBC, init_vect=iv_bytes)
-    ciphertext = cipher.encrypt(plaintext_bytes)
-    
-    ciphertext_hex = ciphertext.hex()
-    
-    chunks = [ciphertext_hex[i:i+32] for i in range(0, len(ciphertext_hex), 32)]
-    ciphertext_lines = "\\n".join(chunks)
-    
-    top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"
-    checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))
-    checksum_hex = checksum_hasher.hexdigest()
-    
-    full_payload = f"{iv_hex}\\n{ciphertext_lines}\\n{checksum_hex}"
-    full_packet_b64 = base64.b64encode(full_payload.encode('utf-8')).decode('utf-8')
-    
-    return {
-        "ciphertext": ciphertext_lines,
-        "hash": checksum_hex,
-        "packet_hex": full_payload,
-        "packet_b64": full_packet_b64
-    }
-
-def core_decrypt(packet_input: str, key_hex: str) -> dict:
-    packet_input = packet_input.strip()
-    try:
-        if '\\n' in packet_input:
-            raw_payload = packet_input
-        else:
-            raw_payload = base64.b64decode(packet_input).decode('utf-8')
-    except Exception:
-        return {"status": "error", "message": "Failed to safely process structural package alignment formatting bounds."}
-
-    lines = [line.strip() for line in raw_payload.strip().split('\\n') if line.strip()]
-    if len(lines) < 3:
-        return {"status": "error", "message": "Malformed block structure lines. Minimum 3 lines required (IV, Ciphertext chunks, Checksum)."}
-
-    iv_hex = lines[0]
-    provided_checksum = lines[-1]
-    
-    ciphertext_chunks = lines[1:-1]
-    ciphertext_hex = "".join(ciphertext_chunks)
-    ciphertext_display = "\\n".join(ciphertext_chunks)
-
-    top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"
-    checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))
-    expected_checksum = checksum_hasher.hexdigest()
-
-    if provided_checksum != expected_checksum:
-        return {"status": "error", "message": "Integrity alignment signature failed! Transmission payload altered or context error."}
-
-    key_bytes = bytes.fromhex(key_hex)
-    iv_bytes = bytes.fromhex(iv_hex)
-    ciphertext_bytes = bytes.fromhex(ciphertext_hex)
-
-    try:
-        cipher = gostcipher.new('kuznechik', key_bytes, gostcipher.MODE_CBC, init_vect=iv_bytes)
-        decrypted_padded = cipher.decrypt(ciphertext_bytes)
-        plaintext_out = unpad(decrypted_padded).decode('utf-8')
-    except Exception:
-        return {"status": "error", "message": "Decryption failure. Data block structural alignment padding layer anomaly detected."}
-
-    return {
-        "status": "success",
-        "iv": iv_hex,
-        "ciphertext": ciphertext_display,
-        "hash": provided_checksum,
-        "plaintext": plaintext_out
-    }
-                `);
-                
+                await pyodideInstance.runPythonAsync(`import osimport base64from gostcrypto import gosthash, gostcipherdef pad(data: bytes, block_size: int = 16) -> bytes:    padding_len = block_size - (len(data) % block_size)    return data + bytes([padding_len] * padding_len)def unpad(data: bytes) -> bytes:    if not data:        raise ValueError("Data empty")    padding_len = data[-1]    if padding_len < 1 or padding_len > 16 or len(data) < padding_len:        raise ValueError("Invalid padding layout matching bounds")    for i in range(len(data) - padding_len, len(data)):        if data[i] != padding_len:            raise ValueError("Padding mismatch anomaly")    return data[:-padding_len]def core_derive_key(passphrase: str) -> str:    passkey_bytes = passphrase.encode('utf-8')    fixed_salt = b"GOST_Suite_PBKDF2_Salt_Default_Bytes"    derived = gosthash.pbkdf2(passkey_bytes, fixed_salt, 100000, 32, 'streebog256')    return derived.hex()def core_generate_iv() -> str:    return os.urandom(16).hex()def core_encrypt(plaintext: str, key_hex: str, iv_hex: str) -> dict:    key_bytes = bytes.fromhex(key_hex)    iv_bytes = bytes.fromhex(iv_hex)    plaintext_bytes = pad(plaintext.encode('utf-8'), block_size=16)    cipher = gostcipher.new('kuznechik', key_bytes, gostcipher.MODE_CBC, init_vect=iv_bytes)    ciphertext = cipher.encrypt(plaintext_bytes)    ciphertext_hex = ciphertext.hex()    chunks = [ciphertext_hex[i:i+32] for i in range(0, len(ciphertext_hex), 32)]    ciphertext_lines = "\\n".join(chunks)    top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"    checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))    checksum_hex = checksum_hasher.hexdigest()    full_payload = f"{iv_hex}\\n{ciphertext_lines}\\n{checksum_hex}"    full_packet_b64 = base64.b64encode(full_payload.encode('utf-8')).decode('utf-8')    return {        "ciphertext": ciphertext_lines,        "hash": checksum_hex,        "packet_hex": full_payload,        "packet_b64": full_packet_b64    }def core_decrypt(packet_input: str, key_hex: str) -> dict:    packet_input = packet_input.strip()    try:        if '\\n' in packet_input:            raw_payload = packet_input        else:            raw_payload = base64.b64decode(packet_input).decode('utf-8')    except Exception:        return {"status": "error", "message": "Failed to safely process structural package alignment formatting bounds."}    lines = [line.strip() for line in raw_payload.strip().split('\\n') if line.strip()]    if len(lines) < 3:        return {"status": "error", "message": "Malformed block structure lines. Minimum 3 lines required (IV, Ciphertext chunks, Checksum)."}    iv_hex = lines[0]    provided_checksum = lines[-1]    ciphertext_chunks = lines[1:-1]    ciphertext_hex = "".join(ciphertext_chunks)    ciphertext_display = "\\n".join(ciphertext_chunks)    top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"    checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))    expected_checksum = checksum_hasher.hexdigest()    if provided_checksum != expected_checksum:        return {"status": "error", "message": "Integrity alignment signature failed! Transmission payload altered or context error."}    key_bytes = bytes.fromhex(key_hex)    iv_bytes = bytes.fromhex(iv_hex)    ciphertext_bytes = bytes.fromhex(ciphertext_hex)    try:        cipher = gostcipher.new('kuznechik', key_bytes, gostcipher.MODE_CBC, init_vect=iv_bytes)        decrypted_padded = cipher.decrypt(ciphertext_bytes)        plaintext_out = unpad(decrypted_padded).decode('utf-8')    except Exception:        return {"status": "error", "message": "Decryption failure. Data block structural alignment padding layer anomaly detected."}    return {        "status": "success",        "iv": iv_hex,        "ciphertext": ciphertext_display,        "hash": provided_checksum,        "plaintext": plaintext_out    }`);
                 loader.style.color = "var(--success)";
                 loader.innerHTML = "✅ Environment Ready!";
                 document.querySelectorAll('.action-btn').forEach(btn => btn.disabled = false);
@@ -487,7 +341,6 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
                 loader.innerHTML = "❌ Initialization Failed. Check browser console logs or connection.";
             }
         }
-
         async function deriveKey(tab) {
             const passphrase = document.getElementById(tab + '-passphrase').value;
             if (!passphrase) return alert("Please type a valid passphrase.");
@@ -496,13 +349,11 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
             document.getElementById(tab + '-key').textContent = derivedHex;
             return derivedHex;
         }
-
         function generateIV(tab) {
             const ivHex = pyodideInstance.runPython("core_generate_iv()");
             document.getElementById(tab + '-iv').textContent = ivHex;
             return ivHex;
         }
-
         async function encrypt() {
             const plaintext = document.getElementById('encrypt-plaintext').value;
             let keyHex = document.getElementById('encrypt-key').textContent;
@@ -519,7 +370,6 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
             document.getElementById('encrypt-full-packet-hex').textContent = pyResult.get("packet_hex");
             document.getElementById('encrypt-full-packet-base64').textContent = pyResult.get("packet_b64");
         }
-
         async function decrypt() {
             const packetData = document.getElementById('decrypt-packet').value.trim();
             let keyHex = document.getElementById('decrypt-key').textContent;
@@ -542,7 +392,12 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
             document.getElementById('decrypt-hash').textContent = pyResult.get("hash");
             document.getElementById('decrypt-plaintext').textContent = pyResult.get("plaintext");
         }
-
+        document.querySelectorAll('input[type="password"]').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const tab = e.target.id.split('-')[0];
+                document.getElementById(tab + '-key').textContent = '';
+            });
+        });
         window.addEventListener('DOMContentLoaded', initPythonEnv);
     </script>
 </body>

@@ -218,7 +218,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label>Derived Key (32 bytes)</label>
+                <label>Derived Key (Streebog-256)</label>
                 <div class="output-box">
                     <div id="encrypt-key"></div>
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-key')">Copy</button>
@@ -243,7 +243,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label>Ciphertext (Hex)</label>
+                <label>Ciphertext (Kuznyechik CBC Hex)</label>
                 <div class="output-box">
                     <div id="encrypt-ciphertext"></div>
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-ciphertext')">Copy</button>
@@ -251,7 +251,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label>Integrity Hash (SHA-256)</label>
+                <label>Integrity Hash (Streebog-256 Checksum)</label>
                 <div class="output-box">
                     <div id="encrypt-hash"></div>
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-hash')">Copy</button>
@@ -286,7 +286,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label>Derived Key (32 bytes)</label>
+                <label>Derived Key (Streebog-256)</label>
                 <div class="output-box">
                     <div id="decrypt-key"></div>
                     <button class="copy-btn" onclick="copyToClipboard('decrypt-key')">Copy</button>
@@ -339,6 +339,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
     </div>
 
     <script>
+        // --- HELPER CONVERSIONS ---
         function hexToBytes(hex) {
             let bytes = [];
             for (let i = 0; i < hex.length; i += 2) {
@@ -356,18 +357,12 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
         }
 
         function base64ToBytes(base64) {
-            let bin = atob(base64);
+            let bin = atob(base64.trim());
             let bytes = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) {
                 bytes[i] = bin.charCodeAt(i);
             }
             return bytes;
-        }
-
-        async function nativeSha256Hex(textOrBytes) {
-            let u8 = typeof textOrBytes === 'string' ? new TextEncoder().encode(textOrBytes) : textOrBytes;
-            let buffer = await crypto.subtle.digest('SHA-256', u8);
-            return bytesToHex(new Uint8Array(buffer));
         }
 
         function copyToClipboard(elementId) {
@@ -382,18 +377,30 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             event.target.classList.add('active');
         }
 
+        // --- AUTHENTIC LIBRARY CRYPTO OPERATIONS ---
+
+        // 1. Streebog-256 Key Derivation
         async function deriveKey(tab) {
             const passphrase = document.getElementById(tab + '-passphrase').value;
             if (!passphrase) {
                 alert("Please enter a passphrase.");
-                return;
+                return null;
             }
             
-            const keyHex = await nativeSha256Hex(passphrase);
+            const passBytes = new TextEncoder().encode(passphrase);
+            
+            // Calls the true Streebog-256 engine inside your library file
+            const digestBuffer = await window.gostCrypto.subtle.digest(
+                { name: "GOST R 34.11", version: 2012, length: 256 }, 
+                passBytes
+            );
+            
+            const keyHex = bytesToHex(new Uint8Array(digestBuffer));
             document.getElementById(tab + '-key').textContent = keyHex;
             return keyHex;
         }
 
+        // 2. Generate 16-byte random IV
         function generateIV(tab) {
             const iv = new Uint8Array(16);
             window.crypto.getRandomValues(iv);
@@ -402,6 +409,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             return ivHex;
         }
 
+        // 3. Kuznyechik CBC Encryption
         async function encrypt() {
             const plaintext = document.getElementById('encrypt-plaintext').value;
             let keyHex = document.getElementById('encrypt-key').textContent;
@@ -410,55 +418,79 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             if (!plaintext) return alert("Please enter plaintext.");
             if (!keyHex) keyHex = await deriveKey('encrypt');
             if (!ivHex) ivHex = generateIV('encrypt');
+            if (!keyHex) return;
 
-            const key = hexToBytes(keyHex);
-            const iv = hexToBytes(ivHex);
-            const textBytes = new TextEncoder().encode(plaintext);
+            const keyBytes = hexToBytes(keyHex);
+            const ivBytes = hexToBytes(ivHex);
+            const plainBytes = new TextEncoder().encode(plaintext);
 
-            const encryptedBytes = window.GostKuznyechik.encryptCBC(textBytes, key, iv);
-            const ciphertextHex = bytesToHex(encryptedBytes);
+            // Import the raw key array into the library algorithm context
+            const cryptoKey = await window.gostCrypto.subtle.importKey(
+                "raw", 
+                keyBytes, 
+                { name: "GOST R 34.12", version: 2015, length: 256 }, 
+                false, 
+                ["encrypt"]
+            );
 
-            const payloadHex = ivHex + ciphertextHex;
-            const hashHex = await nativeSha256Hex(hexToBytes(payloadHex));
+            // Execute true library Kuznyechik CBC Mode encryption
+            const encryptedBuffer = await window.gostCrypto.subtle.encrypt(
+                { name: "GOST R 34.12", version: 2015, mode: "CBC", iv: ivBytes },
+                cryptoKey,
+                plainBytes
+            );
 
+            const ciphertextHex = bytesToHex(new Uint8Array(encryptedBuffer));
             document.getElementById('encrypt-ciphertext').textContent = ciphertextHex;
+
+            // Packet structural layout formulation: IV + ciphertext bytes
+            const payloadHex = ivHex + ciphertextHex;
+            const checkBytes = hexToBytes(payloadHex);
+            
+            // Generate the true Streebog validation checksum
+            const hashBuffer = await window.gostCrypto.subtle.digest(
+                { name: "GOST R 34.11", version: 2012, length: 256 },
+                checkBytes
+            );
+            const hashHex = bytesToHex(new Uint8Array(hashBuffer));
             document.getElementById('encrypt-hash').textContent = hashHex;
 
+            // Assemble output formats
             const fullPacketHex = ivHex + ciphertextHex + hashHex;
             document.getElementById('encrypt-full-packet-hex').textContent = fullPacketHex;
-
-            const rawPacketBytes = hexToBytes(fullPacketHex);
-            document.getElementById('encrypt-full-packet-base64').textContent = bytesToBase64(rawPacketBytes);
+            document.getElementById('encrypt-full-packet-base64').textContent = bytesToBase64(hexToBytes(fullPacketHex));
         }
 
+        // 4. Kuznyechik CBC Decryption
         async function decrypt() {
             const packet = document.getElementById('decrypt-packet').value.trim();
             let keyHex = document.getElementById('decrypt-key').textContent;
             const statusBox = document.getElementById('decrypt-status');
 
-            if (!packet) return alert("Please enter a packet.");
+            if (!packet) return alert("Please paste a packet payload.");
             if (!keyHex) keyHex = await deriveKey('decrypt');
+            if (!keyHex) return;
 
             let packetHex = "";
             try {
                 if (/^[0-9a-fA-F]+$/.test(packet)) {
                     packetHex = packet;
                 } else {
-                    const base64Parsed = base64ToBytes(packet);
-                    packetHex = bytesToHex(base64Parsed);
+                    packetHex = bytesToHex(base64ToBytes(packet));
                 }
             } catch (e) {
-                statusBox.innerHTML = '❌ Invalid packet data layout structure.';
+                statusBox.innerHTML = '❌ Invalid structural packet format context.';
                 statusBox.className = 'status error';
                 return;
             }
 
-            if (packetHex.length < 96 || !packetHex) {
-                statusBox.innerHTML = '❌ Invalid or incomplete packet structural size.';
+            if (packetHex.length < 96) {
+                statusBox.innerHTML = '❌ Incomplete data layer frame length size.';
                 statusBox.className = 'status error';
                 return;
             }
 
+            // Extract segments from frame positions
             const ivHex = packetHex.substring(0, 32);
             const hashStart = packetHex.length - 64;
             const ciphertextHex = packetHex.substring(32, hashStart);
@@ -468,32 +500,49 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             document.getElementById('decrypt-ciphertext').textContent = ciphertextHex;
             document.getElementById('decrypt-hash').textContent = receivedHashHex;
 
+            // Evaluate integrity signature validation
             const payloadHex = ivHex + ciphertextHex;
-            const computedHashHex = await nativeSha256Hex(hexToBytes(payloadHex));
+            const checkBytes = hexToBytes(payloadHex);
+            const hashBuffer = await window.gostCrypto.subtle.digest(
+                { name: "GOST R 34.11", version: 2012, length: 256 },
+                checkBytes
+            );
+            const computedHashHex = bytesToHex(new Uint8Array(hashBuffer));
 
             if (computedHashHex !== receivedHashHex) {
-                statusBox.innerHTML = '❌ Integrity check failed! Packet corrupted or tampered.';
+                statusBox.innerHTML = '❌ Integrity check failed! Streebog validation mismatch.';
                 statusBox.className = 'status error';
                 document.getElementById('decrypt-plaintext').textContent = "";
                 return;
             }
 
-            statusBox.innerHTML = '✅ Integrity verified. Decoding packet...';
+            statusBox.innerHTML = '✅ Integrity verified via Streebog. Decoding Kuznyechik payload...';
             statusBox.className = 'status success';
 
             try {
-                const key = hexToBytes(keyHex);
-                const iv = hexToBytes(ivHex);
+                const keyBytes = hexToBytes(keyHex);
+                const ivBytes = hexToBytes(ivHex);
                 const cipherBytes = hexToBytes(ciphertextHex);
                 
-                const decryptedBytes = window.GostKuznyechik.decryptCBC(cipherBytes, key, iv);
-                const plaintext = new TextDecoder().decode(decryptedBytes);
+                // Import key for decryption engine profile wrapper
+                const cryptoKey = await window.gostCrypto.subtle.importKey(
+                    "raw", 
+                    keyBytes, 
+                    { name: "GOST R 34.12", version: 2015, length: 256 }, 
+                    false, 
+                    ["decrypt"]
+                );
+
+                // Run library decryption routine
+                const decryptedBuffer = await window.gostCrypto.subtle.decrypt(
+                    { name: "GOST R 34.12", version: 2015, mode: "CBC", iv: ivBytes },
+                    cryptoKey,
+                    cipherBytes
+                );
                 
-                if (!plaintext) throw new Error("Data corruption");
-                
-                document.getElementById('decrypt-plaintext').textContent = plaintext;
+                document.getElementById('decrypt-plaintext').textContent = new TextDecoder().decode(new Uint8Array(decryptedBuffer));
             } catch (e) {
-                document.getElementById('decrypt-plaintext').textContent = "Decryption failed. Check passphrase context.";
+                document.getElementById('decrypt-plaintext').textContent = "Decryption execution failed. Verify key correctness.";
             }
         }
     </script>

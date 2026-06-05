@@ -453,7 +453,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                 return;
             }
 
-            if (packetHex.length < 112 || !packetHex) {
+            if (packetHex.length < 96 || !packetHex) {
                 statusBox.innerHTML = '❌ Invalid or incomplete packet structural size.';
                 statusBox.className = 'status error';
                 return;

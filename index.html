@@ -359,7 +359,7 @@
                     "def core_derive_key(passphrase: str) -> str:",
                     "    passkey_bytes = passphrase.encode('utf-8')",
                     "    fixed_salt = b'GOST_Suite_PBKDF2_Salt_Default_Bytes'",
-                    "    derived = gosthash.pbkdf2(passkey_bytes, fixed_salt, 1500, 32, 'streebog256')",
+                    "    derived = gosthash.pbkdf2(passkey_bytes, fixed_salt, 100, 32, 'streebog256')",
                     "    return derived.hex()",
                     "",
                     "def core_generate_iv() -> str:",

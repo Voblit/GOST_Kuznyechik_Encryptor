@@ -192,11 +192,11 @@
         }
     </style>
 
-    <script src="libs/crypto-js.js"></script>
+    <script src="libs/gost3412.js"></script>
 </head>
 <body>
     <div class="container">
-                <h1>GOST Suite</h1>
+        <h1>GOST Suite</h1>
         <div class="disclaimer">
 Just a simple tool I decided to make after learning about GOST, capable of decently secure encryption.
 <strong>Note:</strong> This is a client-side proof-of-concept tool built purely for educational purposes and playing around with packet structures. It runs entirely offline. Check the LICENSE file for the standard MIT "AS IS" liability release.
@@ -339,7 +339,37 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
     </div>
 
     <script>
-        // --- UTILITY INTERFACES ---
+        function hexToBytes(hex) {
+            let bytes = [];
+            for (let i = 0; i < hex.length; i += 2) {
+                bytes.push(parseInt(hex.substr(i, 2), 16));
+            }
+            return new Uint8Array(bytes);
+        }
+
+        function bytesToHex(bytes) {
+            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function bytesToBase64(bytes) {
+            return btoa(String.fromCharCode(...bytes));
+        }
+
+        function base64ToBytes(base64) {
+            let bin = atob(base64);
+            let bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) {
+                bytes[i] = bin.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        async function nativeSha256Hex(textOrBytes) {
+            let u8 = typeof textOrBytes === 'string' ? new TextEncoder().encode(textOrBytes) : textOrBytes;
+            let buffer = await crypto.subtle.digest('SHA-256', u8);
+            return bytesToHex(new Uint8Array(buffer));
+        }
+
         function copyToClipboard(elementId) {
             const text = document.getElementById(elementId).textContent;
             if (text) navigator.clipboard.writeText(text);
@@ -352,29 +382,27 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             event.target.classList.add('active');
         }
 
-        // --- ENCRYPTION PIPELINES ---
-        function deriveKey(tab) {
+        async function deriveKey(tab) {
             const passphrase = document.getElementById(tab + '-passphrase').value;
             if (!passphrase) {
                 alert("Please enter a passphrase.");
                 return;
             }
             
-            const keyHash = CryptoJS.SHA256(passphrase);
-            const keyHex = keyHash.toString(CryptoJS.enc.Hex);
-            
+            const keyHex = await nativeSha256Hex(passphrase);
             document.getElementById(tab + '-key').textContent = keyHex;
             return keyHex;
         }
 
         function generateIV(tab) {
-            const iv = CryptoJS.lib.WordArray.random(16);
-            const ivHex = iv.toString(CryptoJS.enc.Hex);
+            const iv = new Uint8Array(16);
+            window.crypto.getRandomValues(iv);
+            const ivHex = bytesToHex(iv);
             document.getElementById(tab + '-iv').textContent = ivHex;
             return ivHex;
         }
 
-        function encrypt() {
+        async function encrypt() {
             const plaintext = document.getElementById('encrypt-plaintext').value;
             const keyHex = document.getElementById('encrypt-key').textContent;
             let ivHex = document.getElementById('encrypt-iv').textContent;
@@ -383,19 +411,15 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             if (!keyHex) return alert("Please derive a key first.");
             if (!ivHex) ivHex = generateIV('encrypt');
 
-            const key = CryptoJS.enc.Hex.parse(keyHex);
-            const iv = CryptoJS.enc.Hex.parse(ivHex);
+            const key = hexToBytes(keyHex);
+            const iv = hexToBytes(ivHex);
+            const textBytes = new TextEncoder().encode(plaintext);
 
-            const encrypted = CryptoJS.AES.encrypt(plaintext, key, {
-                iv: iv,
-                mode: CryptoJS.mode.CBC,
-                padding: CryptoJS.pad.Pkcs7
-            });
-
-            const ciphertextHex = encrypted.ciphertext.toString(CryptoJS.enc.Hex);
+            const encryptedBytes = window.GostKuznyechik.encryptCBC(textBytes, key, iv);
+            const ciphertextHex = bytesToHex(encryptedBytes);
 
             const payloadHex = ivHex + ciphertextHex;
-            const hashHex = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(payloadHex)).toString(CryptoJS.enc.Hex);
+            const hashHex = await nativeSha256Hex(hexToBytes(payloadHex));
 
             document.getElementById('encrypt-ciphertext').textContent = ciphertextHex;
             document.getElementById('encrypt-hash').textContent = hashHex;
@@ -403,11 +427,11 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             const fullPacketHex = ivHex + ciphertextHex + hashHex;
             document.getElementById('encrypt-full-packet-hex').textContent = fullPacketHex;
 
-            const rawPacketBytes = CryptoJS.enc.Hex.parse(fullPacketHex);
-            document.getElementById('encrypt-full-packet-base64').textContent = CryptoJS.enc.Base64.stringify(rawPacketBytes);
+            const rawPacketBytes = hexToBytes(fullPacketHex);
+            document.getElementById('encrypt-full-packet-base64').textContent = bytesToBase64(rawPacketBytes);
         }
 
-        function decrypt() {
+        async function decrypt() {
             const packet = document.getElementById('decrypt-packet').value.trim();
             const keyHex = document.getElementById('decrypt-key').textContent;
             const statusBox = document.getElementById('decrypt-status');
@@ -420,8 +444,8 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                 if (/^[0-9a-fA-F]+$/.test(packet)) {
                     packetHex = packet;
                 } else {
-                    const base64Parsed = CryptoJS.enc.Base64.parse(packet);
-                    packetHex = base64Parsed.toString(CryptoJS.enc.Hex);
+                    const base64Parsed = base64ToBytes(packet);
+                    packetHex = bytesToHex(base64Parsed);
                 }
             } catch (e) {
                 statusBox.innerHTML = '❌ Invalid packet data layout structure.';
@@ -445,7 +469,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             document.getElementById('decrypt-hash').textContent = receivedHashHex;
 
             const payloadHex = ivHex + ciphertextHex;
-            const computedHashHex = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(payloadHex)).toString(CryptoJS.enc.Hex);
+            const computedHashHex = await nativeSha256Hex(hexToBytes(payloadHex));
 
             if (computedHashHex !== receivedHashHex) {
                 statusBox.innerHTML = '❌ Integrity check failed! Packet corrupted or tampered.';
@@ -458,16 +482,13 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             statusBox.className = 'status success';
 
             try {
-                const key = CryptoJS.enc.Hex.parse(keyHex);
-                const iv = CryptoJS.enc.Hex.parse(ivHex);
+                const key = hexToBytes(keyHex);
+                const iv = hexToBytes(ivHex);
+                const cipherBytes = hexToBytes(ciphertextHex);
                 
-                const decrypted = CryptoJS.AES.decrypt(
-                    { ciphertext: CryptoJS.enc.Hex.parse(ciphertextHex) },
-                    key,
-                    { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }
-                );
-
-                const plaintext = decrypted.toString(CryptoJS.enc.Utf8);
+                const decryptedBytes = window.GostKuznyechik.decryptCBC(cipherBytes, key, iv);
+                const plaintext = new TextDecoder().decode(decryptedBytes);
+                
                 if (!plaintext) throw new Error("Data corruption");
                 
                 document.getElementById('decrypt-plaintext').textContent = plaintext;

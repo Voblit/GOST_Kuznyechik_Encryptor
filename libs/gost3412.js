@@ -1,4 +1,3 @@
-
 /*
 ehh...
 i suppose it kinda works ‾\_(• _ •)_/‾
@@ -6,8 +5,9 @@ other than that... yeahhh...
 anyways made by yaboy voblit
 not sure how accurate it is :\
 made in 2026
-ver... 6 i thonk
+ver... 7
 */
+
 const GostKuznyechik = (function() {
     'use strict';
 
@@ -35,7 +35,7 @@ const GostKuznyechik = (function() {
     for (let i = 0; i < 256; i++) { INV_S[S[i]] = i; }
 
     // Primitive polynomial: x^8 + x^7 + x^6 + x^1 + 1 (0xC3)
-    const L_COEFFS = [1, 148, 32, 133, 16, 194, 192, 1, 251, 1, 192, 194, 16, 133, 32, 148];
+    const L_COEFFS = [148, 32, 133, 16, 194, 192, 1, 251, 1, 192, 194, 16, 133, 32, 148, 1];
 
     function gfMul(a, b) {
         let p = 0;
@@ -55,8 +55,8 @@ const GostKuznyechik = (function() {
             acc ^= gfMul(block[i], L_COEFFS[i]);
         }
         let nextState = new Uint8Array(16);
-        nextState[0] = acc;
-        nextState.set(block.subarray(0, 15), 1);
+        nextState.set(block.subarray(1, 16), 0);
+        nextState[15] = acc;
         return nextState;
     }
 
@@ -66,17 +66,15 @@ const GostKuznyechik = (function() {
         return state;
     }
 
-    // Fixed math for running the linear transformation backwards
     function applyInvR(block) {
+        let acc = block[15];
         let nextState = new Uint8Array(16);
-        nextState.set(block.subarray(1, 16), 0);
+        nextState.set(block.subarray(0, 15), 1);
         
-        let acc = block[0];
-        for (let i = 1; i < 16; i++) {
-            acc ^= gfMul(block[i], L_COEFFS[i - 1]);
+        for (let i = 0; i < 15; i++) {
+            acc ^= gfMul(nextState[i + 1], L_COEFFS[i]);
         }
-        // Multiplication inverse factor over GF(2^8) field space matching modular feedback
-        nextState[15] = gfMul(acc, 244); 
+        nextState[0] = acc;
         return nextState;
     }
 
@@ -90,7 +88,7 @@ const GostKuznyechik = (function() {
         const constants = [];
         for (let i = 1; i <= 32; i++) {
             let c = new Uint8Array(16);
-            c[15] = i;
+            c[0] = i; 
             constants.push(applyL(c));
         }
         return constants;
@@ -179,7 +177,9 @@ const GostKuznyechik = (function() {
                     for (let i = 0; i < 16; i++) { state[i] ^= roundKeys[round][i]; }
                 }
 
-                for (let i = 0; i < 16; i++) { plaintext[offset + i] = state[i] ^ currentVector[i]; }
+                let decryptedBlock = new Uint8Array(16);
+                for (let i = 0; i < 16; i++) { decryptedBlock[i] = state[i] ^ currentVector[i]; }
+                plaintext.set(decryptedBlock, offset);
                 currentVector = block;
             }
 

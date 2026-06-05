@@ -339,6 +339,15 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
     </div>
 
     <script>
+        // --- PROACTIVE FIX FOR INTERNAL PATH DISCOVERY FAILURE ---
+        // Force-feed the library engine configuration parameters to keep it from failing
+        if (typeof window.gostCrypto === 'undefined' && typeof module === 'undefined') {
+            // If the library fell back to a Module context or failed layout detection, map it here
+            if (typeof window.GostSecurity !== 'undefined') {
+                window.gostCrypto = window.GostSecurity;
+            }
+        }
+
         // --- HELPER CONVERSIONS ---
         function hexToBytes(hex) {
             let bytes = [];
@@ -389,8 +398,14 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             
             const passBytes = new TextEncoder().encode(passphrase);
             
-            // Calls the true Streebog-256 engine inside your library file
-            const digestBuffer = await window.gostCrypto.subtle.digest(
+            // Safety Check for library attachment point
+            const cryptoEngine = window.gostCrypto || (window.GostEngine ? window.GostEngine.subtle : undefined);
+            if (!cryptoEngine || !cryptoEngine.subtle) {
+                alert("Crypto Engine Failed to initialize. Check if libs/gost3412.js is present.");
+                return null;
+            }
+
+            const digestBuffer = await cryptoEngine.subtle.digest(
                 { name: "GOST R 34.11", version: 2012, length: 256 }, 
                 passBytes
             );
@@ -424,8 +439,10 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             const ivBytes = hexToBytes(ivHex);
             const plainBytes = new TextEncoder().encode(plaintext);
 
+            const cryptoEngine = window.gostCrypto || (window.GostEngine ? window.GostEngine.subtle : undefined);
+
             // Import the raw key array into the library algorithm context
-            const cryptoKey = await window.gostCrypto.subtle.importKey(
+            const cryptoKey = await cryptoEngine.subtle.importKey(
                 "raw", 
                 keyBytes, 
                 { name: "GOST R 34.12", version: 2015, length: 256 }, 
@@ -434,7 +451,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             );
 
             // Execute true library Kuznyechik CBC Mode encryption
-            const encryptedBuffer = await window.gostCrypto.subtle.encrypt(
+            const encryptedBuffer = await cryptoEngine.subtle.encrypt(
                 { name: "GOST R 34.12", version: 2015, mode: "CBC", iv: ivBytes },
                 cryptoKey,
                 plainBytes
@@ -448,7 +465,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             const checkBytes = hexToBytes(payloadHex);
             
             // Generate the true Streebog validation checksum
-            const hashBuffer = await window.gostCrypto.subtle.digest(
+            const hashBuffer = await cryptoEngine.subtle.digest(
                 { name: "GOST R 34.11", version: 2012, length: 256 },
                 checkBytes
             );
@@ -500,10 +517,12 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             document.getElementById('decrypt-ciphertext').textContent = ciphertextHex;
             document.getElementById('decrypt-hash').textContent = receivedHashHex;
 
+            const cryptoEngine = window.gostCrypto || (window.GostEngine ? window.GostEngine.subtle : undefined);
+
             // Evaluate integrity signature validation
             const payloadHex = ivHex + ciphertextHex;
             const checkBytes = hexToBytes(payloadHex);
-            const hashBuffer = await window.gostCrypto.subtle.digest(
+            const hashBuffer = await cryptoEngine.subtle.digest(
                 { name: "GOST R 34.11", version: 2012, length: 256 },
                 checkBytes
             );
@@ -525,7 +544,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                 const cipherBytes = hexToBytes(ciphertextHex);
                 
                 // Import key for decryption engine profile wrapper
-                const cryptoKey = await window.gostCrypto.subtle.importKey(
+                const cryptoKey = await cryptoEngine.subtle.importKey(
                     "raw", 
                     keyBytes, 
                     { name: "GOST R 34.12", version: 2015, length: 256 }, 
@@ -534,7 +553,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                 );
 
                 // Run library decryption routine
-                const decryptedBuffer = await window.gostCrypto.subtle.decrypt(
+                const decryptedBuffer = await cryptoEngine.subtle.decrypt(
                     { name: "GOST R 34.12", version: 2015, mode: "CBC", iv: ivBytes },
                     cryptoKey,
                     cipherBytes

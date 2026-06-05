@@ -1,5 +1,4 @@
 
-
 /*
 ehh...
 i suppose it kinda works ‾\_(• _ •)_/‾
@@ -7,11 +6,12 @@ other than that... yeahhh...
 anyways made by yaboy voblit
 not sure how accurate it is :\
 made in 2026
-ver 5 (ugh forgot window)
+ver... 6 i thonk
 */
 const GostKuznyechik = (function() {
     'use strict';
 
+    // GOST R 34.12-2015 Non-linear S-Box transformation
     const S = new Uint8Array([
         0xFC, 0xEE, 0xDD, 0x11, 0xCF, 0x6E, 0x31, 0x16, 0xFB, 0xC7, 0xFA, 0xB7, 0x43, 0x4E, 0x9A, 0x07,
         0x10, 0x52, 0x33, 0x69, 0x64, 0xBC, 0xA2, 0x9F, 0x58, 0x6A, 0x8B, 0xDE, 0x3A, 0xA1, 0x66, 0x41,
@@ -34,15 +34,16 @@ const GostKuznyechik = (function() {
     const INV_S = new Uint8Array(256);
     for (let i = 0; i < 256; i++) { INV_S[S[i]] = i; }
 
+    // Primitive polynomial: x^8 + x^7 + x^6 + x^1 + 1 (0xC3)
     const L_COEFFS = [1, 148, 32, 133, 16, 194, 192, 1, 251, 1, 192, 194, 16, 133, 32, 148];
 
     function gfMul(a, b) {
         let p = 0;
         for (let i = 0; i < 8; i++) {
-            p ^= (-(b & 1) & a);
+            if (b & 1) p ^= a;
             let hiBitSet = a & 0x80;
             a <<= 1;
-            a ^= (-((hiBitSet >> 7) & 1) & 0xC3);
+            if (hiBitSet) a ^= 0xC3;
             b >>= 1;
         }
         return p & 0xFF;
@@ -65,15 +66,17 @@ const GostKuznyechik = (function() {
         return state;
     }
 
+    // Fixed math for running the linear transformation backwards
     function applyInvR(block) {
         let nextState = new Uint8Array(16);
         nextState.set(block.subarray(1, 16), 0);
         
-        let acc = block[0]; 
-        for (let i = 0; i < 15; i++) {
-            acc ^= gfMul(block[i + 1], L_COEFFS[i]);
+        let acc = block[0];
+        for (let i = 1; i < 16; i++) {
+            acc ^= gfMul(block[i], L_COEFFS[i - 1]);
         }
-        nextState[15] = gfMul(acc, 1); 
+        // Multiplication inverse factor over GF(2^8) field space matching modular feedback
+        nextState[15] = gfMul(acc, 244); 
         return nextState;
     }
 
@@ -87,7 +90,7 @@ const GostKuznyechik = (function() {
         const constants = [];
         for (let i = 1; i <= 32; i++) {
             let c = new Uint8Array(16);
-            c[15] = i; 
+            c[15] = i;
             constants.push(applyL(c));
         }
         return constants;

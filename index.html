@@ -203,7 +203,7 @@
                 <button class="action-btn" onclick="generateIV('encrypt')" disabled>Generate IV</button>
             </div>
             <div class="form-group">
-                <label>Derived Key (PBKDF2-Streebog-256)</label>
+                <label>Derived Key (Streebog-256 Hash)</label>
                 <div class="output-box">
                     <div id="encrypt-key"></div>
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-key')">Copy</button>
@@ -261,7 +261,7 @@
                 <button class="action-btn" onclick="deriveKey('decrypt')" disabled>Derive Key</button>
             </div>
             <div class="form-group">
-                <label>Derived Key (PBKDF2-Streebog-256)</label>
+                <label>Derived Key (Streebog-256 Hash)</label>
                 <div class="output-box">
                     <div id="decrypt-key"></div>
                     <button class="copy-btn" onclick="copyToClipboard('decrypt-key')">Copy</button>
@@ -358,9 +358,8 @@
                     "",
                     "def core_derive_key(passphrase: str) -> str:",
                     "    passkey_bytes = passphrase.encode('utf-8')",
-                    "    fixed_salt = b'GOST_Suite_PBKDF2_Salt_Default_Bytes'",
-                    "    derived = gosthash.pbkdf2(passkey_bytes, fixed_salt, 100, 32, 'streebog256')",
-                    "    return derived.hex()",
+                    "    hasher = gosthash.new('streebog256', data=passkey_bytes)",
+                    "    return hasher.hexdigest()",
                     "",
                     "def core_generate_iv() -> str:",
                     "    return os.urandom(16).hex()",

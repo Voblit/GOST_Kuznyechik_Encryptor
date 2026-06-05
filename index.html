@@ -264,7 +264,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label>Full Packet (Hex)</label>
+                <label>Full Packet (Hex Layout)</label>
                 <div class="output-box">
                     <div id="encrypt-full-packet-hex"></div>
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-full-packet-hex')">Copy</button>
@@ -272,7 +272,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label>Full Packet (Base64)</label>
+                <label>Full Packet (Base64 Representation)</label>
                 <div class="output-box">
                     <div id="encrypt-full-packet-base64"></div>
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-full-packet-base64')">Copy</button>
@@ -299,8 +299,8 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label for="decrypt-packet">Received Packet (Hex or Base64)</label>
-                <textarea id="decrypt-packet" placeholder="Paste the full packet here"></textarea>
+                <label for="decrypt-packet">Received Packet Payload (Raw 3-Line Block or Base64)</label>
+                <textarea id="decrypt-packet" placeholder="Paste the payload lines here"></textarea>
             </div>
 
             <div class="button-group">
@@ -363,112 +363,99 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
         async function initPythonEnv() {
             try {
                 pyodideInstance = await loadPyodide();
+                await pyodideInstance.loadPackage("micropip");
+                const micropip = pyodideInstance.pyvars.get("micropip");
+                await micropip.install("gostcrypto");
+
                 await pyodideInstance.runPythonAsync(`
-import hashlib
-import secrets
+import os
 import base64
+from gostcrypto import gosthash, gostcipher
 
-BLOCK_SIZE = 16
+def pad(data: bytes, block_size: int = 16) -> bytes:
+    padding_len = block_size - (len(data) % block_size)
+    return data + bytes([padding_len] * padding_len)
 
-def pkcs7_pad(data: bytes) -> bytes:
-    pad_len = BLOCK_SIZE - (len(data) % BLOCK_SIZE)
-    return data + bytes([pad_len] * pad_len)
-
-def pkcs7_unpad(data: bytes) -> bytes:
-    pad_len = data[-1]
-    if pad_len < 1 or pad_len > BLOCK_SIZE:
-        raise ValueError("Invalid padding length")
-    if data[-pad_len:] != bytes([pad_len] * pad_len):
-        raise ValueError("Invalid padding structure")
-    return data[:-pad_len]
+def unpad(data: bytes) -> bytes:
+    padding_len = data[-1]
+    return data[:-padding_len]
 
 def core_derive_key(passphrase: str) -> str:
-    return hashlib.sha256(passphrase.encode('utf-8')).hexdigest()
+    passkey_bytes = passphrase.encode('utf-8')
+    hasher = gosthash.new('streebog256', data=passkey_bytes)
+    return hasher.digest().hex()
 
 def core_generate_iv() -> str:
-    return secrets.token_hex(BLOCK_SIZE)
+    return os.urandom(16).hex()
 
 def core_encrypt(plaintext: str, key_hex: str, iv_hex: str) -> dict:
-    plain_bytes = pkcs7_pad(plaintext.encode('utf-8'))
     key_bytes = bytes.fromhex(key_hex)
     iv_bytes = bytes.fromhex(iv_hex)
     
-    cipher_bytes = bytearray()
-    prev_block = iv_bytes
+    plaintext_bytes = pad(plaintext.encode('utf-8'), block_size=16)
+    cipher = gostcipher.new('kuznechik', key_bytes, gostcipher.MODE_CBC, init_vect=iv_bytes)
+    ciphertext = cipher.encrypt(plaintext_bytes)
     
-    for i in range(0, len(plain_bytes), BLOCK_SIZE):
-        block = plain_bytes[i:i+BLOCK_SIZE]
-        xored = bytes(b ^ p for b, p in zip(block, prev_block))
-        
-        # Core transform chunk operation matching key mapping constraints
-        cipher_block = bytearray(b ^ key_bytes[idx % len(key_bytes)] for idx, b in enumerate(xored))
-        cipher_bytes.extend(cipher_block)
-        prev_block = cipher_block
-
-    ciphertext_hex = cipher_bytes.hex()
-    payload_hex = iv_hex + ciphertext_hex
-    hash_hex = hashlib.sha256(bytes.fromhex(payload_hex)).hexdigest()
-    full_packet_hex = payload_hex + hash_hex
-    full_packet_b64 = base64.b64encode(bytes.fromhex(full_packet_hex)).decode('utf-8')
+    ciphertext_hex = ciphertext.hex()
+    top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"
+    
+    checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))
+    checksum_hex = checksum_hasher.hexdigest()
+    
+    full_payload = f"{iv_hex}\\n{ciphertext_hex}\\n{checksum_hex}"
+    full_packet_b64 = base64.b64encode(full_payload.encode('utf-8')).decode('utf-8')
     
     return {
         "ciphertext": ciphertext_hex,
-        "hash": hash_hex,
-        "packet_hex": full_packet_hex,
+        "hash": checksum_hex,
+        "packet_hex": full_payload,
         "packet_b64": full_packet_b64
     }
 
 def core_decrypt(packet_input: str, key_hex: str) -> dict:
     packet_input = packet_input.strip()
     try:
-        if all(c in '0123456789abcdefABCDEF' for c in packet_input):
-            packet_hex = packet_input
+        if '\\n' in packet_input or packet_input.count('\\n') >= 2:
+            raw_payload = packet_input
         else:
-            packet_hex = base64.b64decode(packet_input).hex()
+            raw_payload = base64.b64decode(packet_input).decode('utf-8')
     except Exception:
-        return {"status": "error", "message": "Invalid structural packet alignment context."}
-        
-    if len(packet_hex) < (BLOCK_SIZE * 2) + 64:
-        return {"status": "error", "message": "Incomplete data layer frame length size."}
-        
-    iv_hex = packet_hex[:BLOCK_SIZE*2]
-    hash_start = len(packet_hex) - 64
-    ciphertext_hex = packet_hex[BLOCK_SIZE*2:hash_start]
-    received_hash = packet_hex[hash_start:]
-    
-    payload_hex = iv_hex + ciphertext_hex
-    computed_hash = hashlib.sha256(bytes.fromhex(payload_hex)).hexdigest()
-    if computed_hash != received_hash:
-        return {"status": "error", "message": "Integrity check failed! Validation mismatch."}
-        
+        try:
+            raw_payload = base64.b64decode(packet_input).decode('utf-8')
+        except Exception:
+            return {"status": "error", "message": "Failed to safely process structural package alignment formatting bounds."}
+
+    lines = raw_payload.strip().split('\\n')
+    if len(lines) < 3:
+        return {"status": "error", "message": "Malformed layer blocks structure. Expected IV, Ciphertext, and Signature check strings."}
+
+    iv_hex = lines[0]
+    ciphertext_hex = lines[1]
+    provided_checksum = lines[2]
+
+    top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"
+    checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))
+    expected_checksum = checksum_hasher.hexdigest()
+
+    if provided_checksum != expected_checksum:
+        return {"status": "error", "message": "Integrity alignment signature failed! Transmission payload altered or context error."}
+
     key_bytes = bytes.fromhex(key_hex)
     iv_bytes = bytes.fromhex(iv_hex)
-    cipher_bytes = bytes.fromhex(ciphertext_hex)
-    
-    plain_bytes = bytearray()
-    prev_block = iv_bytes
-    
-    for i in range(0, len(cipher_bytes), BLOCK_SIZE):
-        cipher_block = cipher_bytes[i:i+BLOCK_SIZE]
-        
-        # Inverse transform chunk alignment check matching key arrays
-        decrypted_block = bytes(b ^ key_bytes[idx % len(key_bytes)] for idx, b in enumerate(cipher_block))
-        xored = bytes(d ^ p for d, p in zip(decrypted_block, prev_block))
-        
-        plain_bytes.extend(xored)
-        prev_block = cipher_block
+    ciphertext_bytes = bytes.fromhex(ciphertext_hex)
 
     try:
-        unpadded = pkcs7_unpad(plain_bytes)
-        plaintext_out = unpadded.decode('utf-8')
+        cipher = gostcipher.new('kuznechik', key_bytes, gostcipher.MODE_CBC, init_vect=iv_bytes)
+        decrypted_padded = cipher.decrypt(ciphertext_bytes)
+        plaintext_out = unpad(decrypted_padded).decode('utf-8')
     except Exception:
-        return {"status": "error", "message": "Padding verification failed. Incorrect key or corrupt block alignment."}
+        return {"status": "error", "message": "Decryption failure. Data block structural alignment padding layer anomaly detected."}
 
     return {
         "status": "success",
         "iv": iv_hex,
         "ciphertext": ciphertext_hex,
-        "hash": received_hash,
+        "hash": provided_checksum,
         "plaintext": plaintext_out
     }
                 `);
@@ -514,7 +501,7 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
             const packetData = document.getElementById('decrypt-packet').value.trim();
             let keyHex = document.getElementById('decrypt-key').textContent;
             const statusBox = document.getElementById('decrypt-status');
-            if (!packetData) return alert("Please paste a packet string payload.");
+            if (!packetData) return alert("Please paste a payload data transmission string.");
             if (!keyHex) keyHex = await deriveKey('decrypt');
             pyodideInstance.globals.set("p_packet", packetData);
             pyodideInstance.globals.set("p_key", keyHex);
@@ -525,7 +512,7 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
                 statusBox.className = "status error";
                 return;
             }
-            statusBox.innerHTML = "✅ Verification hash check successful. Deciphering complete.";
+            statusBox.innerHTML = "✅ Verification signature match successful. Data frame cleared.";
             statusBox.className = "status success";
             document.getElementById('decrypt-iv').textContent = pyResult.get("iv");
             document.getElementById('decrypt-ciphertext').textContent = pyResult.get("ciphertext");

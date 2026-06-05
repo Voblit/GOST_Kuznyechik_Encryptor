@@ -188,7 +188,7 @@
             Just a simple tool I decided to make after learning about GOST, capable of decently secure encryption.
             <strong>Note:</strong> This is a client-side proof-of-concept tool built purely for educational purposes and playing around with packet structures. It runs entirely offline. Check the LICENSE file for the standard MIT "AS IS" liability release.
         </div>
-        <div id="global-loader">🔄 Initializing WebAssembly Python Engine & Downloading gostcrypto (takes up to 15s)...</div>
+        <div id="global-loader">thingy is thonking...</div>
         <div class="tabs">
             <button class="tab-button active" onclick="switchTab('encrypt', event)">Encrypt</button>
             <button class="tab-button" onclick="switchTab('decrypt', event)">Decrypt</button>
@@ -333,12 +333,12 @@
                 await micropip.install("gostcrypto");
                 await pyodideInstance.runPythonAsync(`import osimport base64from gostcrypto import gosthash, gostcipherdef pad(data: bytes, block_size: int = 16) -> bytes:    padding_len = block_size - (len(data) % block_size)    return data + bytes([padding_len] * padding_len)def unpad(data: bytes) -> bytes:    if not data:        raise ValueError("Data empty")    padding_len = data[-1]    if padding_len < 1 or padding_len > 16 or len(data) < padding_len:        raise ValueError("Invalid padding layout matching bounds")    for i in range(len(data) - padding_len, len(data)):        if data[i] != padding_len:            raise ValueError("Padding mismatch anomaly")    return data[:-padding_len]def core_derive_key(passphrase: str) -> str:    passkey_bytes = passphrase.encode('utf-8')    fixed_salt = b"GOST_Suite_PBKDF2_Salt_Default_Bytes"    derived = gosthash.pbkdf2(passkey_bytes, fixed_salt, 100000, 32, 'streebog256')    return derived.hex()def core_generate_iv() -> str:    return os.urandom(16).hex()def core_encrypt(plaintext: str, key_hex: str, iv_hex: str) -> dict:    key_bytes = bytes.fromhex(key_hex)    iv_bytes = bytes.fromhex(iv_hex)    plaintext_bytes = pad(plaintext.encode('utf-8'), block_size=16)    cipher = gostcipher.new('kuznechik', key_bytes, gostcipher.MODE_CBC, init_vect=iv_bytes)    ciphertext = cipher.encrypt(plaintext_bytes)    ciphertext_hex = ciphertext.hex()    chunks = [ciphertext_hex[i:i+32] for i in range(0, len(ciphertext_hex), 32)]    ciphertext_lines = "\\n".join(chunks)    top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"    checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))    checksum_hex = checksum_hasher.hexdigest()    full_payload = f"{iv_hex}\\n{ciphertext_lines}\\n{checksum_hex}"    full_packet_b64 = base64.b64encode(full_payload.encode('utf-8')).decode('utf-8')    return {        "ciphertext": ciphertext_lines,        "hash": checksum_hex,        "packet_hex": full_payload,        "packet_b64": full_packet_b64    }def core_decrypt(packet_input: str, key_hex: str) -> dict:    packet_input = packet_input.strip()    try:        if '\\n' in packet_input:            raw_payload = packet_input        else:            raw_payload = base64.b64decode(packet_input).decode('utf-8')    except Exception:        return {"status": "error", "message": "Failed to safely process structural package alignment formatting bounds."}    lines = [line.strip() for line in raw_payload.strip().split('\\n') if line.strip()]    if len(lines) < 3:        return {"status": "error", "message": "Malformed block structure lines. Minimum 3 lines required (IV, Ciphertext chunks, Checksum)."}    iv_hex = lines[0]    provided_checksum = lines[-1]    ciphertext_chunks = lines[1:-1]    ciphertext_hex = "".join(ciphertext_chunks)    ciphertext_display = "\\n".join(ciphertext_chunks)    top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"    checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))    expected_checksum = checksum_hasher.hexdigest()    if provided_checksum != expected_checksum:        return {"status": "error", "message": "Integrity alignment signature failed! Transmission payload altered or context error."}    key_bytes = bytes.fromhex(key_hex)    iv_bytes = bytes.fromhex(iv_hex)    ciphertext_bytes = bytes.fromhex(ciphertext_hex)    try:        cipher = gostcipher.new('kuznechik', key_bytes, gostcipher.MODE_CBC, init_vect=iv_bytes)        decrypted_padded = cipher.decrypt(ciphertext_bytes)        plaintext_out = unpad(decrypted_padded).decode('utf-8')    except Exception:        return {"status": "error", "message": "Decryption failure. Data block structural alignment padding layer anomaly detected."}    return {        "status": "success",        "iv": iv_hex,        "ciphertext": ciphertext_display,        "hash": provided_checksum,        "plaintext": plaintext_out    }`);
                 loader.style.color = "var(--success)";
-                loader.innerHTML = "✅ Environment Ready!";
+                loader.innerHTML = "Ready!";
                 document.querySelectorAll('.action-btn').forEach(btn => btn.disabled = false);
             } catch (err) {
                 console.error(err);
                 loader.style.color = "var(--error)";
-                loader.innerHTML = "❌ Initialization Failed. Check browser console logs or connection.";
+                loader.innerHTML = "init brokie :(";
             }
         }
         async function deriveKey(tab) {
@@ -381,11 +381,11 @@
             const pyResult = pyodideInstance.runPython("core_decrypt(p_packet, p_key)").toJs();
             statusBox.style.display = "block";
             if (pyResult.get("status") === "error") {
-                statusBox.innerHTML = `❌ ${pyResult.get("message")}`;
+                statusBox.innerHTML = ` ${pyResult.get("message")}`;
                 statusBox.className = "status error";
                 return;
             }
-            statusBox.innerHTML = "✅ Verification signature match successful. Data frame cleared.";
+            statusBox.innerHTML = " Verification signature match successful. Data frame cleared.";
             statusBox.className = "status success";
             document.getElementById('decrypt-iv').textContent = pyResult.get("iv");
             document.getElementById('decrypt-ciphertext').textContent = pyResult.get("ciphertext");

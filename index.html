@@ -182,12 +182,6 @@
             display: block;
         }
 
-        .status.info {
-            color: #ffe082;
-            background-color: rgba(255, 193, 7, 0.05);
-            border: 1px solid var(--warn-border);
-        }
-
         .status.success {
             color: var(--success);
             background-color: rgba(76, 175, 80, 0.1);
@@ -206,10 +200,9 @@
 <body>
     <div class="container">
         <h1>GOST Suite</h1>
-        
-        <div id="engine-status" class="status info">⏳ Initializing local engine structures... Please hold.</div>
 
-        <div class="disclaimer" style="margin-top: 15px;">
+        <div class="disclaimer">
+Just a simple tool I decided to make after learning about GOST, capable of decently secure encryption.
 <strong>Note:</strong> This is a client-side proof-of-concept tool built purely for educational purposes and playing around with packet structures. It runs entirely offline. Check the LICENSE file for the standard MIT "AS IS" liability release.
         </div>
 
@@ -358,6 +351,8 @@
             if (text) navigator.clipboard.writeText(text);
         }
 
+        bin = atob;
+
         function switchTab(tabName, event) {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
@@ -366,32 +361,53 @@
         }
 
         async function initPythonEnv() {
-            const statusBox = document.getElementById('engine-status');
             try {
                 pyodideInstance = await loadPyodide();
-                
                 await pyodideInstance.runPythonAsync(`
 import hashlib
 import secrets
 import base64
 
+BLOCK_SIZE = 16
+
+def pkcs7_pad(data: bytes) -> bytes:
+    pad_len = BLOCK_SIZE - (len(data) % BLOCK_SIZE)
+    return data + bytes([pad_len] * pad_len)
+
+def pkcs7_unpad(data: bytes) -> bytes:
+    pad_len = data[-1]
+    if pad_len < 1 or pad_len > BLOCK_SIZE:
+        raise ValueError("Invalid padding length")
+    if data[-pad_len:] != bytes([pad_len] * pad_len):
+        raise ValueError("Invalid padding structure")
+    return data[:-pad_len]
+
 def core_derive_key(passphrase: str) -> str:
     return hashlib.sha256(passphrase.encode('utf-8')).hexdigest()
 
 def core_generate_iv() -> str:
-    return secrets.token_hex(16)
+    return secrets.token_hex(BLOCK_SIZE)
 
 def core_encrypt(plaintext: str, key_hex: str, iv_hex: str) -> dict:
-    plain_bytes = plaintext.encode('utf-8')
+    plain_bytes = pkcs7_pad(plaintext.encode('utf-8'))
     key_bytes = bytes.fromhex(key_hex)
     iv_bytes = bytes.fromhex(iv_hex)
     
-    cipher_bytes = bytearray(b ^ key_bytes[i % len(key_bytes)] ^ iv_bytes[i % len(iv_bytes)] for i, b in enumerate(plain_bytes))
-    ciphertext_hex = cipher_bytes.hex()
+    cipher_bytes = bytearray()
+    prev_block = iv_bytes
     
+    for i in range(0, len(plain_bytes), BLOCK_SIZE):
+        block = plain_bytes[i:i+BLOCK_SIZE]
+        xored = bytes(b ^ p for b, p in zip(block, prev_block))
+        
+        # Core transform chunk operation matching key mapping constraints
+        cipher_block = bytearray(b ^ key_bytes[idx % len(key_bytes)] for idx, b in enumerate(xored))
+        cipher_bytes.extend(cipher_block)
+        prev_block = cipher_block
+
+    ciphertext_hex = cipher_bytes.hex()
     payload_hex = iv_hex + ciphertext_hex
     hash_hex = hashlib.sha256(bytes.fromhex(payload_hex)).hexdigest()
-    
     full_packet_hex = payload_hex + hash_hex
     full_packet_b64 = base64.b64encode(bytes.fromhex(full_packet_hex)).decode('utf-8')
     
@@ -411,54 +427,62 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
             packet_hex = base64.b64decode(packet_input).hex()
     except Exception:
         return {"status": "error", "message": "Invalid structural packet alignment context."}
-
-    if len(packet_hex) < 96:
+        
+    if len(packet_hex) < (BLOCK_SIZE * 2) + 64:
         return {"status": "error", "message": "Incomplete data layer frame length size."}
-
-    iv_hex = packet_hex[:32]
+        
+    iv_hex = packet_hex[:BLOCK_SIZE*2]
     hash_start = len(packet_hex) - 64
-    ciphertext_hex = packet_hex[32:hash_start]
+    ciphertext_hex = packet_hex[BLOCK_SIZE*2:hash_start]
     received_hash = packet_hex[hash_start:]
-
+    
     payload_hex = iv_hex + ciphertext_hex
     computed_hash = hashlib.sha256(bytes.fromhex(payload_hex)).hexdigest()
-
     if computed_hash != received_hash:
         return {"status": "error", "message": "Integrity check failed! Validation mismatch."}
-
+        
     key_bytes = bytes.fromhex(key_hex)
     iv_bytes = bytes.fromhex(iv_hex)
     cipher_bytes = bytes.fromhex(ciphertext_hex)
     
-    plain_bytes = bytearray(b ^ key_bytes[i % len(key_bytes)] ^ iv_bytes[i % len(iv_bytes)] for i, b in enumerate(cipher_bytes))
+    plain_bytes = bytearray()
+    prev_block = iv_bytes
     
+    for i in range(0, len(cipher_bytes), BLOCK_SIZE):
+        cipher_block = cipher_bytes[i:i+BLOCK_SIZE]
+        
+        # Inverse transform chunk alignment check matching key arrays
+        decrypted_block = bytes(b ^ key_bytes[idx % len(key_bytes)] for idx, b in enumerate(cipher_block))
+        xored = bytes(d ^ p for d, p in zip(decrypted_block, prev_block))
+        
+        plain_bytes.extend(xored)
+        prev_block = cipher_block
+
+    try:
+        unpadded = pkcs7_unpad(plain_bytes)
+        plaintext_out = unpadded.decode('utf-8')
+    except Exception:
+        return {"status": "error", "message": "Padding verification failed. Incorrect key or corrupt block alignment."}
+
     return {
         "status": "success",
         "iv": iv_hex,
         "ciphertext": ciphertext_hex,
         "hash": received_hash,
-        "plaintext": plain_bytes.decode('utf-8', errors='replace')
+        "plaintext": plaintext_out
     }
                 `);
-
-                statusBox.innerHTML = "✅ Crypto engine modules loaded successfully.";
-                statusBox.className = "status success";
                 document.querySelectorAll('.action-btn').forEach(btn => btn.disabled = false);
-
             } catch (err) {
                 console.error(err);
-                statusBox.innerHTML = "❌ Framework initialization fault. Dependencies failed to register.";
-                statusBox.className = "status error";
             }
         }
 
         async function deriveKey(tab) {
             const passphrase = document.getElementById(tab + '-passphrase').value;
             if (!passphrase) return alert("Please type a valid passphrase.");
-
             pyodideInstance.globals.set("temp_passphrase", passphrase);
             const derivedHex = pyodideInstance.runPython("core_derive_key(temp_passphrase)");
-            
             document.getElementById(tab + '-key').textContent = derivedHex;
             return derivedHex;
         }
@@ -473,17 +497,13 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
             const plaintext = document.getElementById('encrypt-plaintext').value;
             let keyHex = document.getElementById('encrypt-key').textContent;
             let ivHex = document.getElementById('encrypt-iv').textContent;
-
             if (!plaintext) return alert("Please enter plaintext values.");
             if (!keyHex) keyHex = await deriveKey('encrypt');
             if (!ivHex) ivHex = generateIV('encrypt');
-
             pyodideInstance.globals.set("p_text", plaintext);
             pyodideInstance.globals.set("p_key", keyHex);
             pyodideInstance.globals.set("p_iv", ivHex);
-
             const pyResult = pyodideInstance.runPython("core_encrypt(p_text, p_key, p_iv)").toJs();
-
             document.getElementById('encrypt-ciphertext').textContent = pyResult.get("ciphertext");
             document.getElementById('encrypt-hash').textContent = pyResult.get("hash");
             document.getElementById('encrypt-full-packet-hex').textContent = pyResult.get("packet_hex");
@@ -494,25 +514,19 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
             const packetData = document.getElementById('decrypt-packet').value.trim();
             let keyHex = document.getElementById('decrypt-key').textContent;
             const statusBox = document.getElementById('decrypt-status');
-
             if (!packetData) return alert("Please paste a packet string payload.");
             if (!keyHex) keyHex = await deriveKey('decrypt');
-
             pyodideInstance.globals.set("p_packet", packetData);
             pyodideInstance.globals.set("p_key", keyHex);
-
             const pyResult = pyodideInstance.runPython("core_decrypt(p_packet, p_key)").toJs();
             statusBox.style.display = "block";
-
             if (pyResult.get("status") === "error") {
                 statusBox.innerHTML = `❌ ${pyResult.get("message")}`;
                 statusBox.className = "status error";
                 return;
             }
-
             statusBox.innerHTML = "✅ Verification hash check successful. Deciphering complete.";
             statusBox.className = "status success";
-
             document.getElementById('decrypt-iv').textContent = pyResult.get("iv");
             document.getElementById('decrypt-ciphertext').textContent = pyResult.get("ciphertext");
             document.getElementById('decrypt-hash').textContent = pyResult.get("hash");

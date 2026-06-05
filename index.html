@@ -198,7 +198,7 @@
     <div class="container">
         <h1>GOST Suite</h1>
         <div class="disclaimer">
-Just a simple tool I decided to make after learning about GOST Kuznyechik, capable of decently secure encryption.
+Just a simple tool I decided to make after learning about GOST, capable of decently secure encryption.
 <strong>Note:</strong> This is a client-side proof-of-concept tool built purely for educational purposes and playing around with packet structures. It runs entirely offline. Check the LICENSE file for the standard MIT "AS IS" liability release.
         </div>
         <div class="tabs">
@@ -404,11 +404,11 @@ Just a simple tool I decided to make after learning about GOST Kuznyechik, capab
 
         async function encrypt() {
             const plaintext = document.getElementById('encrypt-plaintext').value;
-            const keyHex = document.getElementById('encrypt-key').textContent;
+            let keyHex = document.getElementById('encrypt-key').textContent;
             let ivHex = document.getElementById('encrypt-iv').textContent;
 
             if (!plaintext) return alert("Please enter plaintext.");
-            if (!keyHex) return alert("Please derive a key first.");
+            if (!keyHex) keyHex = await deriveKey('encrypt');
             if (!ivHex) ivHex = generateIV('encrypt');
 
             const key = hexToBytes(keyHex);
@@ -433,11 +433,11 @@ Just a simple tool I decided to make after learning about GOST Kuznyechik, capab
 
         async function decrypt() {
             const packet = document.getElementById('decrypt-packet').value.trim();
-            const keyHex = document.getElementById('decrypt-key').textContent;
+            let keyHex = document.getElementById('decrypt-key').textContent;
             const statusBox = document.getElementById('decrypt-status');
 
             if (!packet) return alert("Please enter a packet.");
-            if (!keyHex) return alert("Please derive a key first.");
+            if (!keyHex) keyHex = await deriveKey('decrypt');
 
             let packetHex = "";
             try {
@@ -453,7 +453,7 @@ Just a simple tool I decided to make after learning about GOST Kuznyechik, capab
                 return;
             }
 
-            if (packetHex.length < 128 || !packetHex) {
+            if (packetHex.length < 112 || !packetHex) {
                 statusBox.innerHTML = '❌ Invalid or incomplete packet structural size.';
                 statusBox.className = 'status error';
                 return;

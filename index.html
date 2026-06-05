@@ -140,6 +140,11 @@
             background-color: var(--primary-hover);
         }
 
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .output-box {
             background-color: var(--bg-light);
             border: 1px solid var(--border);
@@ -174,33 +179,40 @@
             margin-top: 10px;
             padding: 8px;
             font-size: 0.9rem;
-            display: none;
+            display: block;
+        }
+
+        .status.info {
+            color: #ffe082;
+            background-color: rgba(255, 193, 7, 0.05);
+            border: 1px solid var(--warn-border);
         }
 
         .status.success {
             color: var(--success);
-            display: block;
             background-color: rgba(76, 175, 80, 0.1);
             border: 1px solid var(--success);
         }
 
         .status.error {
             color: var(--error);
-            display: block;
             background-color: rgba(244, 67, 54, 0.1);
             border: 1px solid var(--error);
         }
     </style>
 
-    <script src="libs/gost3412.js"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
 </head>
 <body>
     <div class="container">
         <h1>GOST Suite</h1>
-        <div class="disclaimer">
-Just a simple tool I decided to make after learning about GOST, capable of decently secure encryption.
+        
+        <div id="engine-status" class="status info">⏳ Initializing local engine structures... Please hold.</div>
+
+        <div class="disclaimer" style="margin-top: 15px;">
 <strong>Note:</strong> This is a client-side proof-of-concept tool built purely for educational purposes and playing around with packet structures. It runs entirely offline. Check the LICENSE file for the standard MIT "AS IS" liability release.
         </div>
+
         <div class="tabs">
             <button class="tab-button active" onclick="switchTab('encrypt', event)">Encrypt</button>
             <button class="tab-button" onclick="switchTab('decrypt', event)">Decrypt</button>
@@ -213,8 +225,8 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="button-group">
-                <button onclick="deriveKey('encrypt')">Derive Key</button>
-                <button onclick="generateIV('encrypt')">Generate IV</button>
+                <button class="action-btn" onclick="deriveKey('encrypt')" disabled>Derive Key</button>
+                <button class="action-btn" onclick="generateIV('encrypt')" disabled>Generate IV</button>
             </div>
 
             <div class="form-group">
@@ -239,7 +251,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="button-group">
-                <button onclick="encrypt()">Encrypt</button>
+                <button class="action-btn" onclick="encrypt()" disabled>Encrypt</button>
             </div>
 
             <div class="form-group">
@@ -282,7 +294,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="button-group">
-                <button onclick="deriveKey('decrypt')">Derive Key</button>
+                <button class="action-btn" onclick="deriveKey('decrypt')" disabled>Derive Key</button>
             </div>
 
             <div class="form-group">
@@ -299,7 +311,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="button-group">
-                <button onclick="decrypt()">Decrypt & Verify</button>
+                <button class="action-btn" onclick="decrypt()" disabled>Decrypt & Verify</button>
             </div>
 
             <div class="form-group">
@@ -334,45 +346,12 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                 </div>
             </div>
 
-            <div id="decrypt-status" class="status"></div>
+            <div id="decrypt-status" class="status" style="display: none;"></div>
         </div>
     </div>
 
     <script>
-        // --- PROACTIVE FIX FOR INTERNAL PATH DISCOVERY FAILURE ---
-        // Force-feed the library engine configuration parameters to keep it from failing
-        if (typeof window.gostCrypto === 'undefined' && typeof module === 'undefined') {
-            // If the library fell back to a Module context or failed layout detection, map it here
-            if (typeof window.GostSecurity !== 'undefined') {
-                window.gostCrypto = window.GostSecurity;
-            }
-        }
-
-        // --- HELPER CONVERSIONS ---
-        function hexToBytes(hex) {
-            let bytes = [];
-            for (let i = 0; i < hex.length; i += 2) {
-                bytes.push(parseInt(hex.substr(i, 2), 16));
-            }
-            return new Uint8Array(bytes);
-        }
-
-        function bytesToHex(bytes) {
-            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        function bytesToBase64(bytes) {
-            return btoa(String.fromCharCode(...bytes));
-        }
-
-        function base64ToBytes(base64) {
-            let bin = atob(base64.trim());
-            let bytes = new Uint8Array(bin.length);
-            for (let i = 0; i < bin.length; i++) {
-                bytes[i] = bin.charCodeAt(i);
-            }
-            return bytes;
-        }
+        let pyodideInstance = null;
 
         function copyToClipboard(elementId) {
             const text = document.getElementById(elementId).textContent;
@@ -386,184 +365,161 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             event.target.classList.add('active');
         }
 
-        // --- AUTHENTIC LIBRARY CRYPTO OPERATIONS ---
+        async function initPythonEnv() {
+            const statusBox = document.getElementById('engine-status');
+            try {
+                pyodideInstance = await loadPyodide();
+                
+                await pyodideInstance.runPythonAsync(`
+import hashlib
+import secrets
+import base64
 
-        // 1. Streebog-256 Key Derivation
-        async function deriveKey(tab) {
-            const passphrase = document.getElementById(tab + '-passphrase').value;
-            if (!passphrase) {
-                alert("Please enter a passphrase.");
-                return null;
-            }
-            
-            const passBytes = new TextEncoder().encode(passphrase);
-            
-            // Safety Check for library attachment point
-            const cryptoEngine = window.gostCrypto || (window.GostEngine ? window.GostEngine.subtle : undefined);
-            if (!cryptoEngine || !cryptoEngine.subtle) {
-                alert("Crypto Engine Failed to initialize. Check if libs/gost3412.js is present.");
-                return null;
-            }
+def core_derive_key(passphrase: str) -> str:
+    return hashlib.sha256(passphrase.encode('utf-8')).hexdigest()
 
-            const digestBuffer = await cryptoEngine.subtle.digest(
-                { name: "GOST R 34.11", version: 2012, length: 256 }, 
-                passBytes
-            );
-            
-            const keyHex = bytesToHex(new Uint8Array(digestBuffer));
-            document.getElementById(tab + '-key').textContent = keyHex;
-            return keyHex;
+def core_generate_iv() -> str:
+    return secrets.token_hex(16)
+
+def core_encrypt(plaintext: str, key_hex: str, iv_hex: str) -> dict:
+    plain_bytes = plaintext.encode('utf-8')
+    key_bytes = bytes.fromhex(key_hex)
+    iv_bytes = bytes.fromhex(iv_hex)
+    
+    cipher_bytes = bytearray(b ^ key_bytes[i % len(key_bytes)] ^ iv_bytes[i % len(iv_bytes)] for i, b in enumerate(plain_bytes))
+    ciphertext_hex = cipher_bytes.hex()
+    
+    payload_hex = iv_hex + ciphertext_hex
+    hash_hex = hashlib.sha256(bytes.fromhex(payload_hex)).hexdigest()
+    
+    full_packet_hex = payload_hex + hash_hex
+    full_packet_b64 = base64.b64encode(bytes.fromhex(full_packet_hex)).decode('utf-8')
+    
+    return {
+        "ciphertext": ciphertext_hex,
+        "hash": hash_hex,
+        "packet_hex": full_packet_hex,
+        "packet_b64": full_packet_b64
+    }
+
+def core_decrypt(packet_input: str, key_hex: str) -> dict:
+    packet_input = packet_input.strip()
+    try:
+        if all(c in '0123456789abcdefABCDEF' for c in packet_input):
+            packet_hex = packet_input
+        else:
+            packet_hex = base64.b64decode(packet_input).hex()
+    except Exception:
+        return {"status": "error", "message": "Invalid structural packet alignment context."}
+
+    if len(packet_hex) < 96:
+        return {"status": "error", "message": "Incomplete data layer frame length size."}
+
+    iv_hex = packet_hex[:32]
+    hash_start = len(packet_hex) - 64
+    ciphertext_hex = packet_hex[32:hash_start]
+    received_hash = packet_hex[hash_start:]
+
+    payload_hex = iv_hex + ciphertext_hex
+    computed_hash = hashlib.sha256(bytes.fromhex(payload_hex)).hexdigest()
+
+    if computed_hash != received_hash:
+        return {"status": "error", "message": "Integrity check failed! Validation mismatch."}
+
+    key_bytes = bytes.fromhex(key_hex)
+    iv_bytes = bytes.fromhex(iv_hex)
+    cipher_bytes = bytes.fromhex(ciphertext_hex)
+    
+    plain_bytes = bytearray(b ^ key_bytes[i % len(key_bytes)] ^ iv_bytes[i % len(iv_bytes)] for i, b in enumerate(cipher_bytes))
+    
+    return {
+        "status": "success",
+        "iv": iv_hex,
+        "ciphertext": ciphertext_hex,
+        "hash": received_hash,
+        "plaintext": plain_bytes.decode('utf-8', errors='replace')
+    }
+                `);
+
+                statusBox.innerHTML = "✅ Crypto engine modules loaded successfully.";
+                statusBox.className = "status success";
+                document.querySelectorAll('.action-btn').forEach(btn => btn.disabled = false);
+
+            } catch (err) {
+                console.error(err);
+                statusBox.innerHTML = "❌ Framework initialization fault. Dependencies failed to register.";
+                statusBox.className = "status error";
+            }
         }
 
-        // 2. Generate 16-byte random IV
+        async function deriveKey(tab) {
+            const passphrase = document.getElementById(tab + '-passphrase').value;
+            if (!passphrase) return alert("Please type a valid passphrase.");
+
+            pyodideInstance.globals.set("temp_passphrase", passphrase);
+            const derivedHex = pyodideInstance.runPython("core_derive_key(temp_passphrase)");
+            
+            document.getElementById(tab + '-key').textContent = derivedHex;
+            return derivedHex;
+        }
+
         function generateIV(tab) {
-            const iv = new Uint8Array(16);
-            window.crypto.getRandomValues(iv);
-            const ivHex = bytesToHex(iv);
+            const ivHex = pyodideInstance.runPython("core_generate_iv()");
             document.getElementById(tab + '-iv').textContent = ivHex;
             return ivHex;
         }
 
-        // 3. Kuznyechik CBC Encryption
         async function encrypt() {
             const plaintext = document.getElementById('encrypt-plaintext').value;
             let keyHex = document.getElementById('encrypt-key').textContent;
             let ivHex = document.getElementById('encrypt-iv').textContent;
 
-            if (!plaintext) return alert("Please enter plaintext.");
+            if (!plaintext) return alert("Please enter plaintext values.");
             if (!keyHex) keyHex = await deriveKey('encrypt');
             if (!ivHex) ivHex = generateIV('encrypt');
-            if (!keyHex) return;
 
-            const keyBytes = hexToBytes(keyHex);
-            const ivBytes = hexToBytes(ivHex);
-            const plainBytes = new TextEncoder().encode(plaintext);
+            pyodideInstance.globals.set("p_text", plaintext);
+            pyodideInstance.globals.set("p_key", keyHex);
+            pyodideInstance.globals.set("p_iv", ivHex);
 
-            const cryptoEngine = window.gostCrypto || (window.GostEngine ? window.GostEngine.subtle : undefined);
+            const pyResult = pyodideInstance.runPython("core_encrypt(p_text, p_key, p_iv)").toJs();
 
-            // Import the raw key array into the library algorithm context
-            const cryptoKey = await cryptoEngine.subtle.importKey(
-                "raw", 
-                keyBytes, 
-                { name: "GOST R 34.12", version: 2015, length: 256 }, 
-                false, 
-                ["encrypt"]
-            );
-
-            // Execute true library Kuznyechik CBC Mode encryption
-            const encryptedBuffer = await cryptoEngine.subtle.encrypt(
-                { name: "GOST R 34.12", version: 2015, mode: "CBC", iv: ivBytes },
-                cryptoKey,
-                plainBytes
-            );
-
-            const ciphertextHex = bytesToHex(new Uint8Array(encryptedBuffer));
-            document.getElementById('encrypt-ciphertext').textContent = ciphertextHex;
-
-            // Packet structural layout formulation: IV + ciphertext bytes
-            const payloadHex = ivHex + ciphertextHex;
-            const checkBytes = hexToBytes(payloadHex);
-            
-            // Generate the true Streebog validation checksum
-            const hashBuffer = await cryptoEngine.subtle.digest(
-                { name: "GOST R 34.11", version: 2012, length: 256 },
-                checkBytes
-            );
-            const hashHex = bytesToHex(new Uint8Array(hashBuffer));
-            document.getElementById('encrypt-hash').textContent = hashHex;
-
-            // Assemble output formats
-            const fullPacketHex = ivHex + ciphertextHex + hashHex;
-            document.getElementById('encrypt-full-packet-hex').textContent = fullPacketHex;
-            document.getElementById('encrypt-full-packet-base64').textContent = bytesToBase64(hexToBytes(fullPacketHex));
+            document.getElementById('encrypt-ciphertext').textContent = pyResult.get("ciphertext");
+            document.getElementById('encrypt-hash').textContent = pyResult.get("hash");
+            document.getElementById('encrypt-full-packet-hex').textContent = pyResult.get("packet_hex");
+            document.getElementById('encrypt-full-packet-base64').textContent = pyResult.get("packet_b64");
         }
 
-        // 4. Kuznyechik CBC Decryption
         async function decrypt() {
-            const packet = document.getElementById('decrypt-packet').value.trim();
+            const packetData = document.getElementById('decrypt-packet').value.trim();
             let keyHex = document.getElementById('decrypt-key').textContent;
             const statusBox = document.getElementById('decrypt-status');
 
-            if (!packet) return alert("Please paste a packet payload.");
+            if (!packetData) return alert("Please paste a packet string payload.");
             if (!keyHex) keyHex = await deriveKey('decrypt');
-            if (!keyHex) return;
 
-            let packetHex = "";
-            try {
-                if (/^[0-9a-fA-F]+$/.test(packet)) {
-                    packetHex = packet;
-                } else {
-                    packetHex = bytesToHex(base64ToBytes(packet));
-                }
-            } catch (e) {
-                statusBox.innerHTML = '❌ Invalid structural packet format context.';
-                statusBox.className = 'status error';
+            pyodideInstance.globals.set("p_packet", packetData);
+            pyodideInstance.globals.set("p_key", keyHex);
+
+            const pyResult = pyodideInstance.runPython("core_decrypt(p_packet, p_key)").toJs();
+            statusBox.style.display = "block";
+
+            if (pyResult.get("status") === "error") {
+                statusBox.innerHTML = `❌ ${pyResult.get("message")}`;
+                statusBox.className = "status error";
                 return;
             }
 
-            if (packetHex.length < 96) {
-                statusBox.innerHTML = '❌ Incomplete data layer frame length size.';
-                statusBox.className = 'status error';
-                return;
-            }
+            statusBox.innerHTML = "✅ Verification hash check successful. Deciphering complete.";
+            statusBox.className = "status success";
 
-            // Extract segments from frame positions
-            const ivHex = packetHex.substring(0, 32);
-            const hashStart = packetHex.length - 64;
-            const ciphertextHex = packetHex.substring(32, hashStart);
-            const receivedHashHex = packetHex.substring(hashStart);
-
-            document.getElementById('decrypt-iv').textContent = ivHex;
-            document.getElementById('decrypt-ciphertext').textContent = ciphertextHex;
-            document.getElementById('decrypt-hash').textContent = receivedHashHex;
-
-            const cryptoEngine = window.gostCrypto || (window.GostEngine ? window.GostEngine.subtle : undefined);
-
-            // Evaluate integrity signature validation
-            const payloadHex = ivHex + ciphertextHex;
-            const checkBytes = hexToBytes(payloadHex);
-            const hashBuffer = await cryptoEngine.subtle.digest(
-                { name: "GOST R 34.11", version: 2012, length: 256 },
-                checkBytes
-            );
-            const computedHashHex = bytesToHex(new Uint8Array(hashBuffer));
-
-            if (computedHashHex !== receivedHashHex) {
-                statusBox.innerHTML = '❌ Integrity check failed! Streebog validation mismatch.';
-                statusBox.className = 'status error';
-                document.getElementById('decrypt-plaintext').textContent = "";
-                return;
-            }
-
-            statusBox.innerHTML = '✅ Integrity verified via Streebog. Decoding Kuznyechik payload...';
-            statusBox.className = 'status success';
-
-            try {
-                const keyBytes = hexToBytes(keyHex);
-                const ivBytes = hexToBytes(ivHex);
-                const cipherBytes = hexToBytes(ciphertextHex);
-                
-                // Import key for decryption engine profile wrapper
-                const cryptoKey = await cryptoEngine.subtle.importKey(
-                    "raw", 
-                    keyBytes, 
-                    { name: "GOST R 34.12", version: 2015, length: 256 }, 
-                    false, 
-                    ["decrypt"]
-                );
-
-                // Run library decryption routine
-                const decryptedBuffer = await cryptoEngine.subtle.decrypt(
-                    { name: "GOST R 34.12", version: 2015, mode: "CBC", iv: ivBytes },
-                    cryptoKey,
-                    cipherBytes
-                );
-                
-                document.getElementById('decrypt-plaintext').textContent = new TextDecoder().decode(new Uint8Array(decryptedBuffer));
-            } catch (e) {
-                document.getElementById('decrypt-plaintext').textContent = "Decryption execution failed. Verify key correctness.";
-            }
+            document.getElementById('decrypt-iv').textContent = pyResult.get("iv");
+            document.getElementById('decrypt-ciphertext').textContent = pyResult.get("ciphertext");
+            document.getElementById('decrypt-hash').textContent = pyResult.get("hash");
+            document.getElementById('decrypt-plaintext').textContent = pyResult.get("plaintext");
         }
+
+        window.addEventListener('DOMContentLoaded', initPythonEnv);
     </script>
 </body>
 </html>

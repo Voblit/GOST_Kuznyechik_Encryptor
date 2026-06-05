@@ -5,6 +5,7 @@ other than that... yeahhh...
 anyways made by yaboy voblit
 not sure how accurate it is :\
 made in 2026
+ver 2
 */
 (function(window) {
     'use strict';

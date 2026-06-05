@@ -117,7 +117,7 @@
 
         textarea {
             resize: vertical;
-            min-height: 80px;
+            min-height: 120px;
         }
 
         .button-group {
@@ -264,7 +264,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label>Full Packet (Hex Layout)</label>
+                <label>Full Packet (128-bit Chunk Line-Separated Layout)</label>
                 <div class="output-box">
                     <div id="encrypt-full-packet-hex"></div>
                     <button class="copy-btn" onclick="copyToClipboard('encrypt-full-packet-hex')">Copy</button>
@@ -299,8 +299,8 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label for="decrypt-packet">Received Packet Payload (Raw 3-Line Block or Base64)</label>
-                <textarea id="decrypt-packet" placeholder="Paste the payload lines here"></textarea>
+                <label for="decrypt-packet">Received Packet Payload (Paste Full Multi-Line Layout or Base64)</label>
+                <textarea id="decrypt-packet" placeholder="Paste the line-split block chunks here"></textarea>
             </div>
 
             <div class="button-group">
@@ -316,7 +316,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
             </div>
 
             <div class="form-group">
-                <label>Extracted Ciphertext</label>
+                <label>Extracted Ciphertext Chunks</label>
                 <div class="output-box">
                     <div id="decrypt-ciphertext"></div>
                     <button class="copy-btn" onclick="copyToClipboard('decrypt-ciphertext')">Copy</button>
@@ -397,16 +397,24 @@ def core_encrypt(plaintext: str, key_hex: str, iv_hex: str) -> dict:
     ciphertext = cipher.encrypt(plaintext_bytes)
     
     ciphertext_hex = ciphertext.hex()
+    
+    # Slice raw ciphertext hex string into distinct 32-character (16-byte/128-bit) lines
+    chunks = [ciphertext_hex[i:i+32] for i in range(0, len(ciphertext_hex), 32)]
+    ciphertext_lines = "\\n".join(chunks)
+    
+    # Structural definition using explicit reference rule layout:
+    # Top two combined logic must match formatting calculation context variables
     top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"
     
     checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))
     checksum_hex = checksum_hasher.hexdigest()
     
-    full_payload = f"{iv_hex}\\n{ciphertext_hex}\\n{checksum_hex}"
+    # Generate the clear visual structure with split data chunks
+    full_payload = f"{iv_hex}\\n{ciphertext_lines}\\n{checksum_hex}"
     full_packet_b64 = base64.b64encode(full_payload.encode('utf-8')).decode('utf-8')
     
     return {
-        "ciphertext": ciphertext_hex,
+        "ciphertext": ciphertext_lines,
         "hash": checksum_hex,
         "packet_hex": full_payload,
         "packet_b64": full_packet_b64
@@ -415,24 +423,26 @@ def core_encrypt(plaintext: str, key_hex: str, iv_hex: str) -> dict:
 def core_decrypt(packet_input: str, key_hex: str) -> dict:
     packet_input = packet_input.strip()
     try:
-        if '\\n' in packet_input or packet_input.count('\\n') >= 2:
+        if '\\n' in packet_input:
             raw_payload = packet_input
         else:
             raw_payload = base64.b64decode(packet_input).decode('utf-8')
     except Exception:
-        try:
-            raw_payload = base64.b64decode(packet_input).decode('utf-8')
-        except Exception:
-            return {"status": "error", "message": "Failed to safely process structural package alignment formatting bounds."}
+        return {"status": "error", "message": "Failed to safely process structural package alignment formatting bounds."}
 
-    lines = raw_payload.strip().split('\\n')
+    lines = [line.strip() for line in raw_payload.strip().split('\\n') if line.strip()]
     if len(lines) < 3:
-        return {"status": "error", "message": "Malformed layer blocks structure. Expected IV, Ciphertext, and Signature check strings."}
+        return {"status": "error", "message": "Malformed block structure lines. Minimum 3 lines required (IV, Ciphertext, Checksum)."}
 
     iv_hex = lines[0]
-    ciphertext_hex = lines[1]
-    provided_checksum = lines[2]
+    provided_checksum = lines[-1]
+    
+    # Rejoins the intermediate lines to rebuild the underlying raw block sequence
+    ciphertext_chunks = lines[1:-1]
+    ciphertext_hex = "".join(ciphertext_chunks)
+    ciphertext_display = "\\n".join(ciphertext_chunks)
 
+    # Reconstruct verification data structure
     top_two_combined = f"{iv_hex}\\n{ciphertext_hex}"
     checksum_hasher = gosthash.new('streebog256', data=top_two_combined.encode('utf-8'))
     expected_checksum = checksum_hasher.hexdigest()
@@ -454,7 +464,7 @@ def core_decrypt(packet_input: str, key_hex: str) -> dict:
     return {
         "status": "success",
         "iv": iv_hex,
-        "ciphertext": ciphertext_hex,
+        "ciphertext": ciphertext_display,
         "hash": provided_checksum,
         "plaintext": plaintext_out
     }

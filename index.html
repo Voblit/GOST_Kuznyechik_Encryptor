@@ -379,7 +379,7 @@ Just a simple tool I decided to make after learning about GOST, capable of decen
                 });
                 
                 await pyodideInstance.loadPackage("micropip");
-                const micropip = pyodideInstance.pyvars.get("micropip");
+                const micropip = pyodideInstance.pyimport("micropip");
                 await micropip.install("gostcrypto");
 
                 await pyodideInstance.runPythonAsync(`
